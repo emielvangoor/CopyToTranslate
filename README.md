@@ -1,59 +1,107 @@
+<p align="center"><img src="Resources/AppIcon.png" width="128" alt="CopyToTranslate app icon"></p>
+
 # CopyToTranslate
 
-A small macOS menu bar app. Copy Spanish text and read an English translation in the top-right corner. Detection and translation run on your Mac using Apple's Natural Language and Translation frameworks.
+**Copy Spanish. Read English. Stay in your flow.**
 
-## Run
+A small macOS menu bar app that automatically translates copied Spanish text into English in a quiet corner of your screen. Language detection and translation run on your Mac using Apple's Natural Language and Translation frameworks.
 
-Requires macOS 15 or later. The first build targets the architecture of the Mac it is built on; this project is developed on Apple silicon.
+[Download the latest release](https://github.com/emielvangoor/CopyToTranslate/releases/latest) · [Release notes](https://github.com/emielvangoor/CopyToTranslate/releases) · [Report an issue](https://github.com/emielvangoor/CopyToTranslate/issues)
+
+![macOS 15+](https://img.shields.io/badge/macOS-15%2B-555555)
+![Apple silicon](https://img.shields.io/badge/Apple%20silicon-arm64-555555)
+[![Build](https://github.com/emielvangoor/CopyToTranslate/actions/workflows/build.yml/badge.svg)](https://github.com/emielvangoor/CopyToTranslate/actions/workflows/build.yml)
+[![MIT License](https://img.shields.io/badge/license-MIT-555555)](LICENSE)
+
+## What it does
+
+- **Automatic Spanish detection.** Copy a Spanish passage in any app to see its English translation. Emoji are ignored for detection and preserved in the text sent to translation.
+- **A quiet translation card.** Appears at the top right without taking keyboard focus. Longer translations scroll.
+- **Copy English.** Copies the full translation when you click it. Otherwise, your original clipboard stays unchanged.
+- **Five-second countdown.** A shrinking ring shows the remaining reading time. Hover to pause; move away to resume. Respects Reduce Motion.
+- **Menu bar controls.** Pause or resume, translate ambiguous text manually, try an example, or open Setup.
+- **Launch at login.** An optional Setup switch starts the app quietly when you sign in.
+
+No accounts, API keys, subscription, or online translation provider.
+
+## Install
+
+Requires an **Apple silicon Mac (M-series)** running **macOS 15 Sequoia or later**. The downloadable build is arm64; Intel Macs are not currently a supported release target.
+
+1. Download the `.zip` from the [latest release](https://github.com/emielvangoor/CopyToTranslate/releases/latest).
+2. Unzip it and move **CopyToTranslate.app** into **Applications** before opening it.
+3. Open the app and click **Enable Translation**. Approve Apple's Spanish and English language downloads if prompted. This one-time download needs an internet connection.
+4. Allow clipboard access if macOS asks, then copy a Spanish sentence or click **Try Example**.
+5. Turn on **Launch at login** in Setup if you want automatic startup.
+
+The app lives in the menu bar and has no Dock icon. Closing Setup keeps it running.
+
+### First launch and macOS security
+
+These initial releases are ad-hoc signed and **not notarized by Apple**, so macOS may block the first launch. If you trust this download, try opening it once, then use **System Settings → Privacy & Security → Open Anyway**. See [Apple's instructions](https://support.apple.com/en-us/102445). You can also build from source below.
+
+### Updating
+
+Quit CopyToTranslate from its menu, replace the app in Applications with the new version, and reopen it. Check **Setup → Launch at login** after updating. Language models are managed by macOS. There is no built-in updater.
+
+## Everyday use
+
+Copy something like:
+
+> La reunión se ha cambiado al jueves a las diez.
+
+The card shows an English translation. Keep working, hover to read longer, or click **Copy English** to use the result elsewhere.
+
+For short or ambiguous phrases, choose **Translate Clipboard as Spanish** from the menu bar. Use **Pause Translation** whenever you want copying to stay quiet.
+
+## Privacy and limits
+
+- Detection and translation run on-device. Initial language downloads are the only network setup the app needs; there is no cloud translation client, analytics, or clipboard history.
+- Copied text and translations are not saved to files, logs, or preferences. Text is held for the current card and in-flight system translation work.
+- Empty/non-text items, standalone URLs and email addresses, and selections over 10,000 characters are skipped. Uncertain language detection stays quiet.
+- Recognized confidential/transient clipboard markers are skipped. Not all apps mark sensitive text, so these markers are not a complete sensitive-content filter.
+- Startup, resume, and wake ignore existing clipboard content. Only subsequent clipboard changes are watched.
+- New clipboard content dismisses the previous card. The app's own **Copy English** write does not trigger another translation.
+- Sleep, screen lock, and inactive sessions suspend monitoring and hide the card. A floating card is an app window, so Focus does not automatically suppress it.
+- Apple's translation quality can vary, particularly for slang and short phrases. Source and target languages are fixed to Spanish → English.
+
+## Troubleshooting
+
+| Problem | What to try |
+| --- | --- |
+| Nothing happens when copying | Check that translation is enabled and not paused. Try a complete Spanish sentence or **Test Translation** from the menu. |
+| Short words are missed | Choose **Translate Clipboard as Spanish** to bypass automatic detection. |
+| Language downloads are needed | Open **Setup → Prepare Languages** and let the downloads finish. |
+| Clipboard access is needed | Allow CopyToTranslate's clipboard access in macOS settings where available, then enable translation again. |
+| Automatic startup needs approval | Use **Open Login Items Settings** in Setup and allow the app there. |
+| Translation fails | Copy the passage again, or open Setup to recheck language preparation. The original clipboard remains available. |
+
+## Build from source
+
+Use Xcode with the macOS SDK and **Swift 6**. The project has no third-party dependencies.
 
 ```sh
-cd /Users/emiel/Code/Sides/CopyToTranslate
+git clone https://github.com/emielvangoor/CopyToTranslate.git
+cd CopyToTranslate
+env -u LIBRARY_PATH swift test
 ./scripts/build-app.sh
 open build/CopyToTranslate.app
 ```
 
-Click **Enable Translation** in the setup window. If needed, approve Apple's Spanish/English language download. Initial downloads require an internet connection; translation runs on-device once those models are installed.
+The build script creates an ad-hoc signed app for the current Mac's architecture. Keep it at its registered location if you enable launch at login, or move it to Applications before enabling that setting.
 
-Use **Try Example** to check the result. Then copy a Spanish sentence in any app. A small card appears without taking keyboard focus. It closes after 5 seconds of reading time, with a shrinking ring and a “Closes in …s” label. Hovering pauses the countdown and shows “Paused”; moving away resumes the remaining time. Reduced Motion uses a static timer icon instead of the animated ring. Longer translations scroll inside the card.
+Tests use private pasteboards and leave your clipboard untouched. They cover language detection, emoji handling, clipboard changes and preservation, confidential markers, copy suppression, countdown pause/resume, and overlapping suspension events. Actual translation-model downloads and translation UI are checked manually; see [verification notes](docs/verification.md).
 
-Click **Copy English** to put the complete English translation on your clipboard. Otherwise, the original clipboard is preserved.
+## Releases
 
-Look for the translation speech-bubble icon in the menu bar. Its menu contains Pause/Resume, Translate Clipboard as Spanish (for ambiguous words), Test Translation, Setup, and Quit. The app stays in the menu bar when its setup window closes; there is no Dock icon.
-
-Turn on **Setup → Launch at login** to start quietly in the menu bar whenever you sign in. This uses macOS's native login-item registration and reflects the system setting. Turn it off in Setup to stop automatic startup. If macOS requires approval, Setup provides a button to open Login Items settings. Keep the built app at its registered location; rebuilding with the script updates that same app.
-
-## Privacy and behavior
-
-- No accounts, API keys, online translation provider, analytics, or clipboard history.
-- Detection always runs locally. English and uncertain text remain quiet.
-- Emojis and symbols are excluded from language detection so they cannot overwhelm the Spanish signal. The full original passage is still used for translation.
-- Recognized confidential/transient clipboard markers are skipped. These markers do not identify all sensitive content; pause monitoring when appropriate.
-- Empty/non-text items, standalone URLs/email addresses, and selections over 10,000 characters are skipped.
-- Startup and resume ignore preexisting clipboard content. Only subsequent changes are watched.
-- New clipboard content dismisses the previous card and invalidates its result. Copy English does not trigger another translation.
-- Locking/sleep hides the card and stops monitoring; waking starts from a fresh baseline.
-- No copied text or translations are written to logs or preferences. Text is held only for the active card and in-flight system translation work.
-- The floating card is an app window, so Focus does not automatically hide it. Use Pause when needed.
-
-## Build and test
-
-Xcode with the macOS SDK and Swift 6 is required. There are no third-party dependencies.
+Tagged releases include the app ZIP and its SHA-256 checksum. GitHub also provides source archives. To verify a downloaded ZIP, put it and its `.sha256` file in the same folder and run:
 
 ```sh
-env -u LIBRARY_PATH swift test
-./scripts/build-app.sh
-codesign --verify --strict build/CopyToTranslate.app
+shasum -a 256 -c CopyToTranslate-v0.1.0-macos-arm64.zip.sha256
 ```
 
-The tests use private pasteboards, leaving the user's real clipboard untouched. They exercise actual language detection, change handling, confidential content, pause/resume, and Copy English.
+Use the filename for your downloaded version. Maintainers can follow the [release guide](docs/releasing.md) to publish another version. Pull requests and pushes to `main` also run the tests and package verification in GitHub Actions.
 
-The build script creates an ad-hoc signed local app. Distribution to other people would require a Developer ID signature and notarization.
+## License
 
-## Troubleshooting
-
-- **No translation:** verify the menu is active, try a complete Spanish sentence, or choose Test Translation. Very short words may be ambiguous.
-- **Language downloads needed:** open Setup and click Prepare Languages. Downloads are managed by macOS.
-- **Clipboard access needed:** allow access for CopyToTranslate in macOS settings where that control is available, then enable translation again. The app does not repeatedly request access in the background.
-- **Translation error:** copy the passage again. Setup can recheck language preparation. The original clipboard remains available.
-
-OpenRouter and other online engines are intentionally deferred until the local translation quality has been evaluated.
+[MIT](LICENSE) © 2026 Emiel van Goor.
