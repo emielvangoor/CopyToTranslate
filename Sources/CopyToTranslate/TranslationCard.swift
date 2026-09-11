@@ -3,9 +3,15 @@ import ClipboardCore
 import SwiftUI
 import Translation
 
+enum CardKind { case spanishTranslation, dutchProofreading }
+enum DutchVariant: String, CaseIterable { case corrected, improved }
+
 @MainActor final class CardModel: ObservableObject {
     let source: String
+    let kind: CardKind
     @Published var translation: String?
+    @Published var proofreading: DutchProofreading?
+    @Published private(set) var selectedVariant: DutchVariant = .corrected
     @Published var error: String?
     @Published var copied = false
     @Published var copyFailed = false
@@ -14,7 +20,49 @@ import Translation
     var onFinished: (() -> Void)?
     private var timeout: Task<Void, Never>?
 
-    init(source: String) { self.source = source }
+    init(source: String, kind: CardKind = .spanishTranslation) {
+        self.source = source
+        self.kind = kind
+    }
+
+    var displayedText: String? {
+        guard !cancelled else { return nil }
+        if kind == .spanishTranslation { return translation }
+        return selectedVariant == .corrected ? proofreading?.corrected : proofreading?.improved
+    }
+
+    var copyTitle: String {
+        if copied { return "Copied!" }
+        if kind == .spanishTranslation { return "Copy English" }
+        return selectedVariant == .corrected ? "Copy corrected" : "Copy improved"
+    }
+
+    func selectVariant(_ variant: DutchVariant) {
+        guard selectedVariant != variant else { return }
+        selectedVariant = variant
+        copied = false
+        copyFailed = false
+    }
+
+    func copyResult(using copy: (String) -> Bool) {
+        guard let text = displayedText else { return }
+        copied = copy(text)
+        copyFailed = !copied
+    }
+
+    func proofread(using operation: @Sendable (String) async throws -> DutchProofreading) async {
+        guard kind == .dutchProofreading, !cancelled, proofreading == nil, error == nil else { return }
+        do {
+            let result = try await operation(source)
+            guard !Task.isCancelled, !cancelled else { return }
+            proofreading = result
+            onFinished?()
+        } catch {
+            guard !Task.isCancelled, !cancelled, !(error is CancellationError) else { return }
+            self.error = (error as? DutchProofreadingError)?.errorDescription
+                ?? "Couldn’t correct this Dutch text. Press § to retry."
+        }
+    }
 
     func translate(using session: sending TranslationSession) async {
         guard !cancelled, translation == nil, error == nil else { return }
@@ -44,6 +92,7 @@ import Translation
         timeout?.cancel()
         timeout = nil
         translation = nil
+        proofreading = nil
         error = nil
         countdown = nil
         onFinished = nil
@@ -61,14 +110,14 @@ private final class CornerPanel: NSPanel {
     private var dismissal: Task<Void, Never>?
     private var hovered = false
 
-    func show(source: String, copy: @escaping (String) -> Bool, setup: @escaping () -> Void) {
+    func show(source: String, kind: CardKind = .spanishTranslation, copy: @escaping (String) -> Bool, setup: @escaping () -> Void) {
         hide()
-        let model = CardModel(source: source)
+        let model = CardModel(source: source, kind: kind)
         self.model = model
         model.onFinished = { [weak self] in self?.beginCountdown() }
-        let panel = CornerPanel(contentRect: NSRect(x: 0, y: 0, width: 370, height: 240),
+        let panel = CornerPanel(contentRect: NSRect(x: 0, y: 0, width: 370, height: kind == .dutchProofreading ? 280 : 240),
                                 styleMask: [.borderless, .nonactivatingPanel], backing: .buffered, defer: false)
-        panel.title = "Spanish to English"
+        panel.title = kind == .dutchProofreading ? "Dutch proofreading" : "Spanish to English"
         panel.level = .floating
         panel.isFloatingPanel = true
         panel.hidesOnDeactivate = false
@@ -137,23 +186,47 @@ private struct TranslationCard: View {
     let setup: () -> Void
 
     var body: some View {
+        Group {
+            if model.kind == .spanishTranslation {
+                content.translationTask(source: AppController.spanish, target: AppController.english) { session in
+                    await model.translate(using: session)
+                }
+            } else {
+                content.task {
+                    await model.proofread { try await DutchProofreader().proofread($0) }
+                }
+            }
+        }
+    }
+
+    private var content: some View {
         VStack(alignment: .leading, spacing: 14) {
             HStack {
-                Label("Spanish → English", systemImage: "character.bubble")
+                Label(model.kind == .dutchProofreading ? "Dutch proofreading" : "Spanish → English",
+                      systemImage: model.kind == .dutchProofreading ? "text.badge.checkmark" : "character.bubble")
                     .font(.system(size: 12, weight: .medium)).foregroundStyle(.secondary)
                 Spacer()
                 Button(action: close) { Image(systemName: "xmark").font(.system(size: 11, weight: .semibold)) }
                     .buttonStyle(.plain).foregroundStyle(.secondary)
-                    .accessibilityLabel("Close translation")
-                    .help("Close translation")
+                    .accessibilityLabel("Close card")
+                    .help("Close card")
             }
-            if let translation = model.translation {
+            if model.kind == .dutchProofreading {
+                Picker("Dutch version", selection: Binding(get: { model.selectedVariant }, set: { model.selectVariant($0) })) {
+                    Text("Corrected").tag(DutchVariant.corrected)
+                    Text("Improved phrasing").tag(DutchVariant.improved)
+                }
+                .pickerStyle(.segmented)
+                .disabled(model.proofreading == nil)
+                .accessibilityIdentifier("dutchVersion")
+            }
+            if let translation = model.displayedText {
                 ScrollView {
                     Text(translation)
                         .font(.system(size: 15))
                         .frame(maxWidth: .infinity, alignment: .leading)
                         .fixedSize(horizontal: false, vertical: true)
-                        .accessibilityIdentifier("translationText")
+                        .accessibilityIdentifier(model.kind == .dutchProofreading ? "proofreadingText" : "translationText")
                 }
                 .frame(maxWidth: .infinity, maxHeight: .infinity)
                 HStack {
@@ -165,14 +238,13 @@ private struct TranslationCard: View {
                     }
                     Spacer()
                     Button {
-                        model.copied = copy(translation)
-                        model.copyFailed = !model.copied
+                        model.copyResult(using: copy)
                     } label: {
-                        Label(model.copied ? "Copied!" : "Copy English", systemImage: model.copied ? "checkmark" : "doc.on.doc")
+                        Label(model.copyTitle, systemImage: model.copied ? "checkmark" : "doc.on.doc")
                     }
                     .buttonStyle(.borderedProminent)
                     .controlSize(.small)
-                    .accessibilityIdentifier("copyEnglish")
+                    .accessibilityIdentifier(model.kind == .dutchProofreading ? "copyDutch" : "copyEnglish")
                 }
             } else if let error = model.error {
                 Text(error).font(.callout).fixedSize(horizontal: false, vertical: true)
@@ -181,19 +253,17 @@ private struct TranslationCard: View {
             } else {
                 HStack(spacing: 10) {
                     ProgressView().controlSize(.small)
-                    Text("Translating on your Mac…").font(.callout).foregroundStyle(.secondary)
+                    Text(model.kind == .dutchProofreading ? "Correcting Dutch on your Mac…" : "Translating on your Mac…")
+                        .font(.callout).foregroundStyle(.secondary)
                 }
                 .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .leading)
             }
         }
         .padding(18)
-        .frame(width: 370, height: 240)
+        .frame(width: 370, height: model.kind == .dutchProofreading ? 280 : 240)
         .background(.regularMaterial, in: RoundedRectangle(cornerRadius: 16))
         .overlay(RoundedRectangle(cornerRadius: 16).strokeBorder(.primary.opacity(0.10), lineWidth: 1))
         .onHover(perform: hover)
-        .translationTask(source: AppController.spanish, target: AppController.english) { session in
-            await model.translate(using: session)
-        }
     }
 }
 

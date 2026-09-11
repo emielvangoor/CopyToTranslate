@@ -6,6 +6,8 @@
 
 A small macOS menu bar app that automatically translates copied Spanish text into English in a quiet corner of your screen. Language detection and translation run on your Mac using Apple's Natural Language and Translation frameworks.
 
+**Development version 1.1.0:** this branch also includes optional Dutch proofreading with the **§** key. The published **v1.0.0** download supports Spanish translation; Dutch proofreading is currently available by building this branch.
+
 [Download the latest release](https://github.com/emielvangoor/CopyToTranslate/releases/latest) · [Release notes](https://github.com/emielvangoor/CopyToTranslate/releases) · [Report an issue](https://github.com/emielvangoor/CopyToTranslate/issues)
 
 ![macOS 15+](https://img.shields.io/badge/macOS-15%2B-555555)
@@ -18,6 +20,7 @@ A small macOS menu bar app that automatically translates copied Spanish text int
 - **Automatic Spanish detection.** Copy a Spanish passage in any app to see its English translation. Emoji are ignored for detection and preserved in the text sent to translation.
 - **A quiet translation card.** Appears at the top right without taking keyboard focus. Longer translations scroll.
 - **Copy English.** Copies the full translation when you click it. Otherwise, your original clipboard stays unchanged.
+- **Dutch proofreading on demand.** Copy a Dutch sentence or email, then press **§**. Choose **Corrected** for minimal edits or **Improved phrasing** for a smoother version. Each has its own copy action. Dutch copying alone never runs the model.
 - **Five-second countdown.** A shrinking ring shows the remaining reading time. Hover to pause; move away to resume. Respects Reduce Motion.
 - **Menu bar controls.** Pause or resume, translate ambiguous text manually, try an example, or open Setup.
 - **Launch at login.** An optional Setup switch starts the app quietly when you sign in.
@@ -54,16 +57,30 @@ The card shows an English translation. Keep working, hover to read longer, or cl
 
 For short or ambiguous phrases, choose **Translate Clipboard as Spanish** from the menu bar. Use **Pause Translation** whenever you want copying to stay quiet.
 
+### Dutch proofreading (development version)
+
+1. Install and open [Ollama](https://ollama.com/download/mac).
+2. Download the local model once: `ollama pull qwen3.5:9b` (approximately 6.6 GB). Dutch proofreading uses additional memory while processing; Spanish translation does not need Ollama.
+3. In CopyToTranslate Setup, turn on **Enable Dutch proofreading · §** and use **Check setup**.
+4. Copy your Dutch text, then press the bare **§** key. No Command, Option or Control is needed. You can also choose **Correct Dutch Clipboard (§)** from the menu.
+5. Switch between **Corrected** and **Improved phrasing**, then click **Copy corrected** or **Copy improved**. Paste the result wherever you were writing.
+
+The shortcut reserves the ISO section key (the § key on a Dutch Mac keyboard) while Dutch proofreading is enabled. Disable the Dutch switch to type with that key normally. Other keyboard layouts may print a different character on the same physical key. Shortcut conflicts appear in Setup, and the menu command remains available.
+
+Dutch proofreading is explicit and still works while automatic Spanish translation is paused. It skips likely code, names, fragments and uncertain language matches. It reads the clipboard, so no Accessibility permission is needed to read selections in other apps. Keep Ollama running; its launch-at-login option makes it available after restarting. If installed through Homebrew, `brew services start ollama` provides the same background startup behavior.
+
+The five-second reading countdown begins when both results are ready. Hover to pause it. Short passages typically took 2–9 seconds with a warm model on the development Mac; a first request or long email can take longer. Both versions may be identical when the corrected text already reads naturally. Review suggestions before using them; local models can miss errors or change wording more than intended.
+
 ## Privacy and limits
 
-- Detection and translation run on-device. Initial language downloads are the only network setup the app needs; there is no cloud translation client, analytics, or clipboard history.
+- Detection and Spanish translation run on-device. Dutch proofreading uses the local `qwen3.5:9b` model through Ollama at `127.0.0.1:11434`. The app blocks redirects and does not use a cloud endpoint, API key, analytics or clipboard history. Language and model downloads need an internet connection once.
 - Copied text and translations are not saved to files, logs, or preferences. Text is held for the current card and in-flight system translation work.
 - Empty/non-text items, standalone URLs and email addresses, and selections over 10,000 characters are skipped. Uncertain language detection stays quiet.
 - Recognized confidential/transient clipboard markers are skipped. Not all apps mark sensitive text, so these markers are not a complete sensitive-content filter.
 - Startup, resume, and wake ignore existing clipboard content. Only subsequent clipboard changes are watched.
-- New clipboard content dismisses the previous card. The app's own **Copy English** write does not trigger another translation.
+- New clipboard content dismisses the previous card. The app's own copy buttons do not trigger another translation or correction.
 - Sleep, screen lock, and inactive sessions suspend monitoring and hide the card. A floating card is an app window, so Focus does not automatically suppress it.
-- Apple's translation quality can vary, particularly for slang and short phrases. Source and target languages are fixed to Spanish → English.
+- Apple's translation quality can vary, particularly for slang and short phrases. Translation is fixed to Spanish → English; proofreading remains in Dutch. Dutch output is checked for changed numbers, links and email addresses before it becomes copyable.
 
 ## Troubleshooting
 
@@ -75,14 +92,18 @@ For short or ambiguous phrases, choose **Translate Clipboard as Spanish** from t
 | Clipboard access is needed | Allow CopyToTranslate's clipboard access in macOS settings where available, then enable translation again. |
 | Automatic startup needs approval | Use **Open Login Items Settings** in Setup and allow the app there. |
 | Translation fails | Copy the passage again, or open Setup to recheck language preparation. The original clipboard remains available. |
+| Dutch copying does nothing | Copy a full Dutch sentence or email, then press **§**, or use the menu command. Dutch is shortcut-only. |
+| Dutch model is unavailable | Keep Ollama running, run `ollama pull qwen3.5:9b`, and choose **Check setup**. |
+| § is unavailable | Free the key in another app, then disable and re-enable the Dutch switch. The menu command also works. |
 
 ## Build from source
 
-Use Xcode with the macOS SDK and **Swift 6**. The project has no third-party dependencies.
+Use Xcode with the macOS SDK and **Swift 6**. The Swift package has no third-party dependencies. Optional Dutch proofreading needs the separately installed Ollama runtime and model.
 
 ```sh
 git clone https://github.com/emielvangoor/CopyToTranslate.git
 cd CopyToTranslate
+git switch codex/dutch-proofreading
 env -u LIBRARY_PATH swift test
 ./scripts/build-app.sh
 open build/CopyToTranslate.app
@@ -90,7 +111,7 @@ open build/CopyToTranslate.app
 
 The build script creates an ad-hoc signed app for the current Mac's architecture. Keep it at its registered location if you enable launch at login, or move it to Applications before enabling that setting.
 
-Tests use private pasteboards and leave your clipboard untouched. They cover language detection, emoji handling, clipboard changes and preservation, confidential markers, copy suppression, countdown pause/resume, and overlapping suspension events. Actual translation-model downloads and translation UI are checked manually; see [verification notes](docs/verification.md).
+Tests use private pasteboards and leave your clipboard untouched. They cover language detection, emoji handling, clipboard changes and preservation, confidential markers, immediate shortcut/poll ordering, copy suppression, corrected/improved selection, stale-result cancellation, structured Dutch responses, protected tokens, countdown pause/resume, and overlapping suspension events. Actual model output and UI are checked manually; see [verification notes](docs/verification.md).
 
 ## Releases
 

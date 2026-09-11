@@ -83,6 +83,25 @@ final class ClipboardCoreTests: XCTestCase {
         XCTAssertEqual(events.count, 1)
     }
 
+    @MainActor func testImmediateShortcutReadDoesNotGetCancelledByNextClipboardPoll() {
+        let board = NSPasteboard.withUniqueName()
+        defer { board.releaseGlobally() }
+        var events: [String?] = []
+        let monitor = ClipboardMonitor(pasteboard: board) { events.append($0) }
+        monitor.start()
+        defer { monitor.stop() }
+        board.clearContents()
+        board.setString("Ik vindt dit een goed idee.", forType: .string)
+        XCTAssertEqual(monitor.currentTextForManualAction(), "Ik vindt dit een goed idee.")
+        monitor.poll()
+        XCTAssertTrue(events.isEmpty)
+        XCTAssertEqual(board.string(forType: .string), "Ik vindt dit een goed idee.")
+        board.clearContents()
+        board.setString("La reunión es mañana por la tarde.", forType: .string)
+        monitor.poll()
+        XCTAssertEqual(events.count, 1)
+    }
+
     @MainActor func testConfidentialClipboardIsNotExposedEvenForManualTranslation() {
         let board = NSPasteboard.withUniqueName()
         defer { board.releaseGlobally() }
@@ -97,6 +116,7 @@ final class ClipboardCoreTests: XCTestCase {
         XCTAssertEqual(events.count, 1)
         XCTAssertNil((events.first ?? nil))
         XCTAssertNil(monitor.currentText())
+        XCTAssertNil(monitor.currentTextForManualAction())
     }
 
     @MainActor func testResumeSkipsCopiesMadeWhilePaused() {

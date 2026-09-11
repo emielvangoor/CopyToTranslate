@@ -8,11 +8,17 @@ import Translation
     static let spanish = Locale.Language(identifier: "es")
     static let english = Locale.Language(identifier: "en")
     static let demo = "La reunión se ha cambiado al jueves a las diez. ¿Puedes confirmarme si te viene bien?"
+    static let dutchDemo = "Ik vindt dit een goed idee en ik wordt er blij van. Kun je mij morgen even bellen om het te bespreken?"
 
     @Published var enabled = UserDefaults.standard.bool(forKey: "enabled")
     @Published var paused = UserDefaults.standard.bool(forKey: "paused")
     @Published var setupMessage = "Download Spanish and English once, then translate entirely on your Mac."
     @Published var preparing = false
+    @Published private(set) var dutchEnabled = UserDefaults.standard.bool(forKey: "dutchEnabled")
+    @Published private(set) var dutchSetupMessage = "Uses a local Dutch model through Ollama."
+    @Published private(set) var checkingDutch = false
+    @Published private(set) var dutchShortcutError: String?
+    private var spanishReady = false
     @Published private(set) var loginItemStatus = SMAppService.mainApp.status
     @Published private(set) var loginItemError: String?
     var launchAtLogin: Bool { loginItemStatus == .enabled || loginItemStatus == .requiresApproval }
@@ -24,7 +30,11 @@ import Translation
     private var generation = UUID()
     private var availabilityTask: Task<Void, Never>?
     private let detector = SpanishDetector()
+    private let dutchDetector = DutchDetector()
     private let card = TranslationPanel()
+    private lazy var dutchShortcut = GlobalProofreadingShortcut { [weak self] in
+        self?.correctDutchClipboard()
+    }
     private var statusText = "Setup needed"
     private lazy var clipboard = ClipboardMonitor(pasteboard: .general) { [weak self] text in
         self?.request(text, manual: false)
@@ -53,6 +63,8 @@ import Translation
         } else {
             openSetup()
         }
+        updateDutchShortcut()
+        if dutchEnabled { Task { await checkDutchSetup() } }
     }
 
     func applicationShouldTerminateAfterLastWindowClosed(_ sender: NSApplication) -> Bool { false }
@@ -67,6 +79,7 @@ import Translation
     }
 
     func applicationWillTerminate(_ notification: Notification) {
+        dutchShortcut.unregister()
         clipboard.stop()
         cancelCurrent()
         NSWorkspace.shared.notificationCenter.removeObserver(self)
@@ -82,6 +95,10 @@ import Translation
         addItem(paused ? "Resume Translation" : "Pause Translation", action: #selector(togglePause), to: menu, enabled: enabled)
         addItem("Translate Clipboard as Spanish", action: #selector(translateClipboard), to: menu, enabled: enabled && !suspended && !preparing)
         addItem("Test Translation", action: #selector(runDemo), to: menu, enabled: enabled && !suspended && !preparing)
+        if dutchEnabled {
+            addItem("Correct Dutch Clipboard (§)", action: #selector(correctDutchClipboard), to: menu, enabled: enabled && !suspended && !preparing)
+            addItem("Test Dutch Correction", action: #selector(runDutchDemo), to: menu, enabled: enabled && !suspended && !preparing)
+        }
         menu.addItem(.separator())
         addItem("Setup…", action: #selector(openSetup), to: menu)
         addItem("Quit CopyToTranslate", action: #selector(quit), key: "q", to: menu)
@@ -100,6 +117,7 @@ import Translation
 
     @objc func openSetup() {
         refreshLoginItemStatus()
+        Task { await checkDutchSetup() }
         if setupWindow == nil {
             let window = NSWindow(contentRect: NSRect(x: 0, y: 0, width: 440, height: 450),
                                   styleMask: [.titled, .closable], backing: .buffered, defer: false)
@@ -141,13 +159,58 @@ import Translation
         SMAppService.openSystemSettingsLoginItems()
     }
 
+    func setDutchEnabled(_ value: Bool) {
+        dutchEnabled = value
+        UserDefaults.standard.set(value, forKey: "dutchEnabled")
+        updateDutchShortcut()
+        cancelCurrent()
+        if value, !enabled, !suspended, !paused {
+            // Enabling this feature is an explicit clipboard-access action too.
+            _ = clipboard.currentText()
+            if clipboard.automaticAccessAllowed {
+                enabled = true
+                UserDefaults.standard.set(true, forKey: "enabled")
+            }
+        }
+        startIfAllowed()
+        if value { Task { await checkDutchSetup() } }
+    }
+
+    private func updateDutchShortcut() {
+        dutchShortcutError = nil
+        if dutchEnabled {
+            if dutchShortcut.register() != 0 {
+                dutchShortcutError = "The § key is unavailable. Use Correct Dutch Clipboard from the menu, or free the key in another app and turn this switch off and on."
+            }
+        } else {
+            dutchShortcut.unregister()
+        }
+    }
+
+    func checkDutchSetup() async {
+        guard !checkingDutch else { return }
+        checkingDutch = true
+        defer { checkingDutch = false }
+        do {
+            try await DutchProofreader().checkAvailability()
+            dutchSetupMessage = "Ready. Dutch corrections and improved phrasing stay on your Mac."
+        } catch {
+            dutchSetupMessage = (error as? DutchProofreadingError)?.errorDescription ?? "Check that Ollama is running on your Mac."
+        }
+    }
+
     func prepare(using session: sending TranslationSession) async {
         preparing = true
         clipboard.stop()
         cancelCurrent()
         statusText = "Preparing languages…"
         refreshMenu()
-        defer { preparing = false; refreshMenu() }
+        defer {
+            preparing = false
+            // Cancelling or failing Spanish setup must not leave Dutch tools stopped.
+            if enabled && (spanishReady || dutchEnabled) { startIfAllowed() }
+            else { refreshMenu() }
+        }
         do {
             let availability = await LanguageAvailability().status(from: Self.spanish, to: Self.english)
             guard availability != .unsupported else {
@@ -164,6 +227,7 @@ import Translation
                 refreshMenu()
                 return
             }
+            spanishReady = true
             guard !suspended, !paused else {
                 setupMessage = "Languages are ready. Resume translation from the menu bar, or enable it after unlocking your Mac."
                 statusText = paused ? "Paused" : "Setup needed"
@@ -197,7 +261,8 @@ import Translation
     private func checkReadiness() async {
         let availability = await LanguageAvailability().status(from: Self.spanish, to: Self.english)
         guard enabled, !suspended, !preparing else { return }
-        guard availability == .installed else {
+        spanishReady = availability == .installed
+        guard spanishReady || dutchEnabled else {
             clipboard.stop()
             statusText = "Language downloads needed — open Setup"
             setupMessage = "Prepare Spanish and English to resume on-device translation."
@@ -217,11 +282,15 @@ import Translation
             statusText = "Paused"
         } else if preparing {
             statusText = "Preparing languages…"
+        } else if !spanishReady && !dutchEnabled {
+            statusText = "Language downloads needed — open Setup"
         } else if !clipboard.automaticAccessAllowed {
             statusText = "Clipboard access needed — open Setup"
         } else {
             clipboard.start()
-            statusText = "Spanish → English · On-device"
+            statusText = dutchEnabled
+                ? (spanishReady ? "Spanish → English · § Dutch" : "§ Dutch · On-device")
+                : "Spanish → English · On-device"
         }
         refreshMenu()
     }
@@ -233,11 +302,39 @@ import Translation
         if paused { startIfAllowed() } else { Task { await checkReadiness() } }
     }
 
-    @objc private func translateClipboard() { request(clipboard.currentText(), manual: true) }
+    @objc private func translateClipboard() { request(clipboard.currentTextForManualAction(), manual: true) }
 
     @objc func runDemo() {
         setupWindow?.orderOut(nil)
         request(Self.demo, manual: true)
+    }
+
+    @objc func runDutchDemo() {
+        setupWindow?.orderOut(nil)
+        requestDutch(Self.dutchDemo)
+    }
+
+    @objc private func correctDutchClipboard() {
+        guard enabled, !suspended, !preparing, dutchEnabled else { return }
+        setupWindow?.orderOut(nil)
+        requestDutch(clipboard.currentTextForManualAction())
+    }
+
+    private func requestDutch(_ text: String?) {
+        cancelCurrent()
+        guard enabled, !suspended, !preparing, dutchEnabled else { return }
+        guard let source = dutchDetector.candidate(text) else {
+            statusText = "Copy a Dutch sentence or email"
+            refreshMenu()
+            return
+        }
+        showCard(source: source, kind: .dutchProofreading)
+    }
+
+    private func showCard(source: String, kind: CardKind) {
+        card.show(source: source, kind: kind, copy: { [weak self] result in
+            self?.clipboard.copyTranslation(result) ?? false
+        }, setup: { [weak self] in self?.openSetup() })
     }
 
     private func request(_ text: String?, manual: Bool) {
@@ -255,15 +352,15 @@ import Translation
             let availability = await LanguageAvailability().status(from: Self.spanish, to: Self.english)
             guard let self, generation == requestID, !Task.isCancelled else { return }
             guard availability == .installed else {
-                clipboard.stop()
+                spanishReady = false
+                if !dutchEnabled { clipboard.stop() }
                 statusText = "Language downloads needed — open Setup"
                 setupMessage = "Prepare Spanish and English to resume on-device translation."
                 refreshMenu()
                 return
             }
-            card.show(source: source, copy: { [weak self] result in
-                self?.clipboard.copyTranslation(result) ?? false
-            }, setup: { [weak self] in self?.openSetup() })
+            spanishReady = true
+            showCard(source: source, kind: .spanishTranslation)
         }
     }
 

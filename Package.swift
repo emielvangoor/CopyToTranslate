@@ -8,6 +8,7 @@ let package = Package(
     targets: [
         .target(name: "ClipboardCore"),
         .executableTarget(name: "CopyToTranslate", dependencies: ["ClipboardCore"]),
-        .testTarget(name: "ClipboardCoreTests", dependencies: ["ClipboardCore"])
+        .testTarget(name: "ClipboardCoreTests", dependencies: ["ClipboardCore"]),
+        .testTarget(name: "CopyToTranslateTests", dependencies: ["CopyToTranslate", "ClipboardCore"])
     ]
 )

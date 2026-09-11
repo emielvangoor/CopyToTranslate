@@ -72,4 +72,13 @@ import AppKit
         guard protectedTypes.isDisjoint(with: pasteboard.types ?? []) else { return nil }
         return pasteboard.string(forType: .string)
     }
+
+    /// A shortcut handles this clipboard change before the next automatic poll.
+    public func currentTextForManualAction() -> String? {
+        let change = pasteboard.changeCount
+        let text = currentText()
+        guard pasteboard.changeCount == change else { return nil }
+        lastChange = change
+        return text
+    }
 }
