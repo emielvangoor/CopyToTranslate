@@ -16,8 +16,16 @@ public struct SpanishDetector {
         }
         if manual { return value }
         guard letters >= 4 else { return nil }
+        // Emoji sequences can dominate NLLanguageRecognizer's prediction even
+        // in a full Spanish paragraph. Analyze prose, but return the untouched
+        // source so translation and Copy English retain the original context.
+        let proseCharacters = CharacterSet.letters.union(.decimalDigits)
+            .union(.whitespacesAndNewlines).union(.punctuationCharacters)
+        let detectionText = String(value.precomposedStringWithCanonicalMapping.unicodeScalars.map {
+            proseCharacters.contains($0) ? Character(String($0)) : " "
+        })
         let recognizer = NLLanguageRecognizer()
-        recognizer.processString(value)
+        recognizer.processString(detectionText)
         guard recognizer.dominantLanguage == .spanish,
               (recognizer.languageHypotheses(withMaximum: 3)[.spanish] ?? 0) >= 0.80 else { return nil }
         return value

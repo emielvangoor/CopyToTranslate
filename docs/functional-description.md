@@ -2,6 +2,8 @@
 
 Draft for review · 11 September 2026
 
+**Latest behavior:** Auto-close uses a visible **5-second** countdown ring. Hover pauses and leaving resumes the remaining time. Language detection excludes emoji/symbols, while translation receives the original passage. These user-requested updates supersede the original timing defaults below.
+
 **Implementation update:** The user selected the simplest fully on-device first version. Its scope is setup, menu bar pause/resume, manual/demo translation, and one scrollable top-right card with Copy English and Close. OpenRouter, history, launch-at-login, display preferences, and a separate expanded window are deferred. The detailed sections below remain the broader design reference; the implementation plan records the narrowed release scope.
 
 ## Purpose

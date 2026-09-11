@@ -14,7 +14,7 @@ open build/CopyToTranslate.app
 
 Click **Enable Translation** in the setup window. If needed, approve Apple's Spanish/English language download. Initial downloads require an internet connection; translation runs on-device once those models are installed.
 
-Use **Try Example** to check the result. Then copy a Spanish sentence in any app. A small card appears without taking keyboard focus. It disappears 10 seconds after translation, and hovering keeps it visible. Longer translations scroll inside the card.
+Use **Try Example** to check the result. Then copy a Spanish sentence in any app. A small card appears without taking keyboard focus. It closes after 5 seconds of reading time, with a shrinking ring and a “Closes in …s” label. Hovering pauses the countdown and shows “Paused”; moving away resumes the remaining time. Reduced Motion uses a static timer icon instead of the animated ring. Longer translations scroll inside the card.
 
 Click **Copy English** to put the complete English translation on your clipboard. Otherwise, the original clipboard is preserved.
 
@@ -24,6 +24,7 @@ Look for the translation speech-bubble icon in the menu bar. Its menu contains P
 
 - No accounts, API keys, online translation provider, analytics, or clipboard history.
 - Detection always runs locally. English and uncertain text remain quiet.
+- Emojis and symbols are excluded from language detection so they cannot overwhelm the Spanish signal. The full original passage is still used for translation.
 - Recognized confidential/transient clipboard markers are skipped. These markers do not identify all sensitive content; pause monitoring when appropriate.
 - Empty/non-text items, standalone URLs/email addresses, and selections over 10,000 characters are skipped.
 - Startup and resume ignore preexisting clipboard content. Only subsequent changes are watched.

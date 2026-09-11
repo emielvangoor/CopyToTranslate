@@ -3,6 +3,25 @@ import XCTest
 @testable import ClipboardCore
 
 final class ClipboardCoreTests: XCTestCase {
+    func testSpanishMessageWithEmojiTriggersWithoutChangingTheOriginal() {
+        let text = "Feliz comienzo de clases!!! Empezamos con la rutina!!! 💪🏼😊❤️🏑\nLos esperamos a todos esta tarde 🏑🏑🏑"
+        XCTAssertEqual(SpanishDetector().candidate(text), text)
+    }
+
+    func testEmojiFilteringDoesNotMakeEnglishOrEmojiOnlyMessagesSpanish() {
+        let detector = SpanishDetector()
+        XCTAssertNil(detector.candidate("Happy first day of school!!! Back to our routine!!! 💪🏼😊❤️🏑\nWe will see everyone this afternoon 🏑🏑🏑"))
+        XCTAssertNil(detector.candidate("💪🏼😊❤️🏑🏑🏑"))
+    }
+
+    func testDetectionNormalizationPreservesOriginalAccentsAndEmojiInOutput() {
+        let text = "Mañana empezamos las clases. ¿Puedes confirmar tu asistencia? 😊❤️"
+            .decomposedStringWithCanonicalMapping
+        let result = SpanishDetector().candidate(text)
+        XCTAssertNotNil(result)
+        XCTAssertEqual(result.map { Array($0.utf8) }, Array(text.utf8))
+    }
+
     func testRecognizesSpanishWithoutTreatingOtherLanguagesAsSpanish() {
         let detector = SpanishDetector()
         XCTAssertNotNil(detector.candidate("La reunión se ha cambiado al jueves a las diez."))

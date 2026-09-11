@@ -1,4 +1,5 @@
 import AppKit
+import ClipboardCore
 import SwiftUI
 import Translation
 
@@ -8,6 +9,7 @@ import Translation
     @Published var error: String?
     @Published var copied = false
     @Published var copyFailed = false
+    @Published var countdown: DismissalCountdown?
     private(set) var cancelled = false
     var onFinished: (() -> Void)?
     private var timeout: Task<Void, Never>?
@@ -43,6 +45,7 @@ import Translation
         timeout = nil
         translation = nil
         error = nil
+        countdown = nil
         onFinished = nil
     }
 }
@@ -62,7 +65,7 @@ private final class CornerPanel: NSPanel {
         hide()
         let model = CardModel(source: source)
         self.model = model
-        model.onFinished = { [weak self] in self?.scheduleDismissal() }
+        model.onFinished = { [weak self] in self?.beginCountdown() }
         let panel = CornerPanel(contentRect: NSRect(x: 0, y: 0, width: 370, height: 240),
                                 styleMask: [.borderless, .nonactivatingPanel], backing: .buffered, defer: false)
         panel.title = "Spanish to English"
@@ -100,18 +103,28 @@ private final class CornerPanel: NSPanel {
     }
 
     private func setHovered(_ inside: Bool) {
+        guard inside != hovered else { return }
         hovered = inside
-        if inside { dismissal?.cancel(); dismissal = nil }
-        else { scheduleDismissal() }
+        let now = ProcessInfo.processInfo.systemUptime
+        if inside { model?.countdown?.pause(at: now) }
+        else { model?.countdown?.resume(at: now) }
+        scheduleDismissal()
+    }
+
+    private func beginCountdown() {
+        model?.countdown = DismissalCountdown(startedAt: ProcessInfo.processInfo.systemUptime, paused: hovered)
+        scheduleDismissal()
     }
 
     private func scheduleDismissal() {
         dismissal?.cancel()
-        guard !hovered, model?.translation != nil else { return }
-        dismissal = Task { [weak self] in
-            try? await Task.sleep(for: .seconds(10))
-            guard !Task.isCancelled else { return }
-            self?.hide()
+        dismissal = nil
+        guard let model, let countdown = model.countdown, !countdown.isPaused else { return }
+        let remaining = countdown.remaining(at: ProcessInfo.processInfo.systemUptime)
+        dismissal = Task { [weak self, weak model] in
+            try? await Task.sleep(for: .seconds(remaining))
+            guard !Task.isCancelled, let self, let model, self.model === model else { return }
+            hide()
         }
     }
 }
@@ -144,8 +157,12 @@ private struct TranslationCard: View {
                 }
                 .frame(maxWidth: .infinity, maxHeight: .infinity)
                 HStack {
-                    Text(model.copyFailed ? "Couldn’t copy. Try again." : "On-device")
-                        .font(.caption).foregroundStyle(.secondary)
+                    if model.copyFailed {
+                        Text("Couldn’t copy. Try again.")
+                            .font(.caption).foregroundStyle(.secondary)
+                    } else if let countdown = model.countdown {
+                        CountdownIndicator(countdown: countdown)
+                    }
                     Spacer()
                     Button {
                         model.copied = copy(translation)
@@ -176,6 +193,47 @@ private struct TranslationCard: View {
         .onHover(perform: hover)
         .translationTask(source: AppController.spanish, target: AppController.english) { session in
             await model.translate(using: session)
+        }
+    }
+}
+
+private struct CountdownIndicator: View {
+    let countdown: DismissalCountdown
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
+
+    var body: some View {
+        TimelineView(.animation(minimumInterval: reduceMotion ? 1 : 1.0 / 30, paused: countdown.isPaused)) { _ in
+            let remaining = countdown.remaining(at: ProcessInfo.processInfo.systemUptime)
+            let seconds = Int(ceil(remaining))
+            HStack(spacing: 6) {
+                if reduceMotion {
+                    Image(systemName: countdown.isPaused ? "pause.circle" : "timer")
+                        .frame(width: 14, height: 14)
+                } else {
+                    ZStack {
+                        Circle().stroke(.primary.opacity(0.12), lineWidth: 1.7)
+                        Circle()
+                            .trim(from: 0, to: remaining / countdown.duration)
+                            .stroke(countdown.isPaused ? Color.secondary : Color.accentColor,
+                                    style: StrokeStyle(lineWidth: 1.7, lineCap: .round))
+                            .rotationEffect(.degrees(-90))
+                        if countdown.isPaused {
+                            Image(systemName: "pause.fill").font(.system(size: 5, weight: .bold))
+                        }
+                    }
+                    .frame(width: 14, height: 14)
+                }
+                Text(countdown.isPaused ? "Paused" : "Closes in \(seconds)s")
+                    .monospacedDigit()
+            }
+            .font(.system(size: 11, weight: .medium))
+            .foregroundStyle(.secondary)
+            .accessibilityElement(children: .ignore)
+            .accessibilityLabel(countdown.isPaused
+                ? "Auto-close paused, \(seconds) seconds remaining"
+                : "Closes in \(seconds) seconds")
+            .accessibilityIdentifier("dismissalCountdown")
+            .help("Hover over the card to pause the countdown.")
         }
     }
 }

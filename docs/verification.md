@@ -13,3 +13,10 @@ Environment: Apple silicon Mac, macOS 15.6, Swift 6.2 and Xcode macOS SDK.
 - Independent review identified overlapping suspension reasons and setup overriding pause; both were corrected. Preparation also checks lock/pause state before its explicit clipboard-access read.
 
 No network disconnection, actual screen-lock cycle, multiple-monitor setup, or other macOS version was exercised during verification. The local translation claim relies on the selected Apple on-device framework; no online provider client is present in the application.
+
+## Countdown and emoji update
+
+- Added a shared monotonic countdown for the visible ring and actual dismissal, now set to five seconds at the user's request. Four tests cover expiry, hover pause/resume without resetting, duplicate hover events, and hovering before translation completes.
+- Visually checked the countdown ring and live seconds label in the running app; observed the translated card being dismissed.
+- Reproduced the user's emoji-rich Spanish message failing raw language recognition. Removing symbols from recognition input changes the Spanish score to greater than 0.9999. The original text still goes to translation.
+- Added regression coverage for that exact message, emoji-rich English, emoji-only input, and preservation of decomposed accents in the original text.
