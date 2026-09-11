@@ -1,8 +1,9 @@
 import AppKit
 @preconcurrency import ApplicationServices
+import ClipboardCore
 
 enum SelectedTextError: LocalizedError {
-    case permissionRequired, unavailable, secureField
+    case permissionRequired, unavailable, secureField, whatsAppSelection
 
     var errorDescription: String? {
         switch self {
@@ -12,6 +13,8 @@ enum SelectedTextError: LocalizedError {
             "This app doesn’t expose its selected text. Copy the passage, then use a clipboard command from the menu."
         case .secureField:
             "Password fields can’t be processed. Select text in a regular text field."
+        case .whatsAppSelection:
+            "Highlight the WhatsApp message and keep the pointer over the highlight, then press §. You can also right-click the highlight and choose Copy. Your draft is not used."
         }
     }
 }
@@ -33,12 +36,26 @@ enum ShortcutInput {
         NSWorkspace.shared.open(URL(string: "x-apple.systempreferences:com.apple.preference.security?Privacy_Accessibility")!)
     }
 
+    func readIncludingMessages(clipboard: ClipboardMonitor) async throws -> String? {
+        let app = NSWorkspace.shared.frontmostApplication
+        if app?.bundleIdentifier == "net.whatsapp.WhatsApp", let pid = app?.processIdentifier {
+            guard hasPermission else { throw SelectedTextError.permissionRequired }
+            if let text = try await WhatsAppSelectionCapture().read(pid: pid, clipboard: clipboard) { return text }
+            // A real selection in the composer is still supported. Never substitute
+            // the old clipboard for an inaccessible WhatsApp message selection.
+            if let text = try read(expectedPID: pid) { return text }
+            throw SelectedTextError.whatsAppSelection
+        }
+        return try read()
+    }
+
     /// Reads only the foreground selection, on an explicit shortcut or menu action.
     /// It never sends Copy keystrokes or reads the field's entire value.
-    func read() throws -> String? {
+    func read(expectedPID: pid_t? = nil) throws -> String? {
         guard hasPermission else { throw SelectedTextError.permissionRequired }
         guard let pid = NSWorkspace.shared.frontmostApplication?.processIdentifier,
-              pid != ProcessInfo.processInfo.processIdentifier else { throw SelectedTextError.unavailable }
+              pid != ProcessInfo.processInfo.processIdentifier,
+              expectedPID == nil || expectedPID == pid else { throw SelectedTextError.unavailable }
         let application = AXUIElementCreateApplication(pid)
         AXUIElementSetMessagingTimeout(application, 0.5)
         var focused: CFTypeRef?

@@ -21,7 +21,7 @@ struct SetupView: View {
                         .font(.subheadline).foregroundStyle(.secondary)
                 }
             }
-            Text("Copy Spanish for an English translation. Select Spanish or Dutch text and press § to translate or correct it. Your clipboard stays unchanged until you click a copy button.")
+            Text("Copy Spanish for an English translation. Select Spanish or Dutch text and press § to translate or correct it. Copy the result with the button on its card.")
                 .fixedSize(horizontal: false, vertical: true)
             Text(controller.setupMessage)
                 .font(.callout).foregroundStyle(.secondary)
@@ -49,7 +49,7 @@ struct SetupView: View {
                         set: { controller.setDutchEnabled($0) }
                     ))
                     .toggleStyle(.checkbox)
-                    Text("Press § to translate Spanish on your Mac or correct Dutch through OpenRouter and OpenAI. Detection stays on your Mac. With nothing selected, § uses your clipboard.")
+                    Text("Press § to translate Spanish on your Mac or correct Dutch through OpenRouter and OpenAI. Detection stays on your Mac. In text fields, § uses your clipboard when nothing is selected. In WhatsApp, keep the pointer over your highlighted message; § may copy that source text to read it.")
                         .font(.caption).foregroundStyle(.secondary)
                         .fixedSize(horizontal: false, vertical: true)
                     if let error = controller.dutchShortcutError {
