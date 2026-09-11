@@ -18,7 +18,9 @@ Use **Try Example** to check the result. Then copy a Spanish sentence in any app
 
 Click **Copy English** to put the complete English translation on your clipboard. Otherwise, the original clipboard is preserved.
 
-Look for the translation speech-bubble icon in the menu bar. Its menu contains Pause/Resume, Translate Clipboard as Spanish (for ambiguous words), Test Translation, Setup, and Quit. The app stays in the menu bar when its setup window closes; there is no Dock icon. Open the app manually each login in this first version.
+Look for the translation speech-bubble icon in the menu bar. Its menu contains Pause/Resume, Translate Clipboard as Spanish (for ambiguous words), Test Translation, Setup, and Quit. The app stays in the menu bar when its setup window closes; there is no Dock icon.
+
+Turn on **Setup → Launch at login** to start quietly in the menu bar whenever you sign in. This uses macOS's native login-item registration and reflects the system setting. Turn it off in Setup to stop automatic startup. If macOS requires approval, Setup provides a button to open Login Items settings. Keep the built app at its registered location; rebuilding with the script updates that same app.
 
 ## Privacy and behavior
 

@@ -1,5 +1,6 @@
 import AppKit
 import ClipboardCore
+import ServiceManagement
 import SwiftUI
 import Translation
 
@@ -12,6 +13,10 @@ import Translation
     @Published var paused = UserDefaults.standard.bool(forKey: "paused")
     @Published var setupMessage = "Download Spanish and English once, then translate entirely on your Mac."
     @Published var preparing = false
+    @Published private(set) var loginItemStatus = SMAppService.mainApp.status
+    @Published private(set) var loginItemError: String?
+    var launchAtLogin: Bool { loginItemStatus == .enabled || loginItemStatus == .requiresApproval }
+    var loginItemNeedsApproval: Bool { loginItemStatus == .requiresApproval }
     private var suspension = SuspensionState()
     private var suspended: Bool { suspension.isSuspended }
     private var statusItem: NSStatusItem!
@@ -52,6 +57,10 @@ import Translation
 
     func applicationShouldTerminateAfterLastWindowClosed(_ sender: NSApplication) -> Bool { false }
 
+    func applicationDidBecomeActive(_ notification: Notification) {
+        refreshLoginItemStatus()
+    }
+
     func applicationShouldHandleReopen(_ sender: NSApplication, hasVisibleWindows flag: Bool) -> Bool {
         openSetup()
         return true
@@ -90,8 +99,9 @@ import Translation
     }
 
     @objc func openSetup() {
+        refreshLoginItemStatus()
         if setupWindow == nil {
-            let window = NSWindow(contentRect: NSRect(x: 0, y: 0, width: 440, height: 360),
+            let window = NSWindow(contentRect: NSRect(x: 0, y: 0, width: 440, height: 450),
                                   styleMask: [.titled, .closable], backing: .buffered, defer: false)
             window.title = "CopyToTranslate"
             window.isReleasedWhenClosed = false
@@ -101,6 +111,34 @@ import Translation
         }
         NSApp.activate(ignoringOtherApps: true)
         setupWindow?.makeKeyAndOrderFront(nil)
+    }
+
+    private func refreshLoginItemStatus() {
+        let status = SMAppService.mainApp.status
+        if status != loginItemStatus { loginItemError = nil }
+        loginItemStatus = status
+    }
+
+    func setLaunchAtLogin(_ enabled: Bool) {
+        loginItemError = nil
+        let service = SMAppService.mainApp
+        do {
+            if enabled {
+                if service.status != .enabled && service.status != .requiresApproval {
+                    try service.register()
+                }
+            } else if service.status != .notRegistered {
+                try service.unregister()
+            }
+            refreshLoginItemStatus()
+        } catch {
+            refreshLoginItemStatus()
+            loginItemError = "Couldn’t change launch at login: \(error.localizedDescription)"
+        }
+    }
+
+    func openLoginItemSettings() {
+        SMAppService.openSystemSettingsLoginItems()
     }
 
     func prepare(using session: sending TranslationSession) async {

@@ -38,6 +38,25 @@ struct SetupView: View {
                 Button("Try Example") { controller.runDemo() }
                     .disabled(!controller.enabled || controller.preparing)
             }
+            Divider()
+            VStack(alignment: .leading, spacing: 6) {
+                Toggle("Launch at login", isOn: Binding(
+                    get: { controller.launchAtLogin },
+                    set: { controller.setLaunchAtLogin($0) }
+                ))
+                .toggleStyle(.checkbox)
+                Text("Start quietly in the menu bar when you sign in to your Mac.")
+                    .font(.caption).foregroundStyle(.secondary)
+                if controller.loginItemNeedsApproval {
+                    Text("Allow CopyToTranslate in System Settings to finish enabling startup.")
+                        .font(.caption).foregroundStyle(.secondary)
+                    Button("Open Login Items Settings") { controller.openLoginItemSettings() }
+                }
+                if let error = controller.loginItemError {
+                    Text(error).font(.caption).foregroundStyle(.red)
+                        .fixedSize(horizontal: false, vertical: true)
+                }
+            }
             Text("Look for the translation icon in your menu bar to pause or quit.")
                 .font(.caption).foregroundStyle(.secondary)
         }
