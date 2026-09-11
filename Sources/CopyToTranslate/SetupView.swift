@@ -21,7 +21,7 @@ struct SetupView: View {
                         .font(.subheadline).foregroundStyle(.secondary)
                 }
             }
-            Text("Copy Spanish for an English translation. Select Spanish or Dutch text and press § to translate or correct it. Copy the result with the button on its card.")
+            Text("Copy Spanish for an English translation. Copy Spanish or Dutch text, then press § to translate or correct it. Copy the result with the button on its card.")
                 .fixedSize(horizontal: false, vertical: true)
             Text(controller.setupMessage)
                 .font(.callout).foregroundStyle(.secondary)
@@ -44,27 +44,17 @@ struct SetupView: View {
             }
             GroupBox {
                 VStack(alignment: .leading, spacing: 10) {
-                    Toggle("Translate or correct selected text · §", isOn: Binding(
+                    Toggle("Translate or correct clipboard text · §", isOn: Binding(
                         get: { controller.dutchEnabled },
                         set: { controller.setDutchEnabled($0) }
                     ))
                     .toggleStyle(.checkbox)
-                    Text("Press § to translate Spanish on your Mac or correct Dutch through OpenRouter and OpenAI. Detection stays on your Mac. In text fields, § uses your clipboard when nothing is selected. In WhatsApp, keep the pointer over your highlighted message; § may copy that source text to read it.")
+                    Text("Copy text first, then press §. Spanish translates on your Mac; Dutch is corrected through OpenRouter and OpenAI. Language detection stays on your Mac. No Accessibility access is needed.")
                         .font(.caption).foregroundStyle(.secondary)
                         .fixedSize(horizontal: false, vertical: true)
                     if let error = controller.dutchShortcutError {
                         Text(error).font(.caption).foregroundStyle(.red)
                             .fixedSize(horizontal: false, vertical: true)
-                    }
-                    HStack {
-                        Label(controller.selectionAccessAllowed ? "Selected text access allowed" : "Selected text needs Accessibility access",
-                              systemImage: controller.selectionAccessAllowed ? "checkmark.circle" : "hand.raised")
-                            .font(.caption).foregroundStyle(.secondary)
-                        Spacer()
-                        Button(controller.selectionAccessAllowed ? "Settings…" : "Allow…") {
-                            controller.openSelectionAccessSettings()
-                        }
-                        .controlSize(.small)
                     }
                     Text(controller.dutchSetupMessage)
                         .font(.caption).foregroundStyle(.secondary)

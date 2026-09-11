@@ -21,7 +21,6 @@ import Translation
     @Published private(set) var keyEditorRevision = UUID()
     private var keyRevision = UUID()
     @Published private(set) var dutchShortcutError: String?
-    @Published private(set) var selectionAccessAllowed = SelectedTextReader().hasPermission
     private var spanishReady = false
     @Published private(set) var loginItemStatus = SMAppService.mainApp.status
     @Published private(set) var loginItemError: String?
@@ -33,14 +32,11 @@ import Translation
     private var setupWindow: NSWindow?
     private var generation = UUID()
     private var availabilityTask: Task<Void, Never>?
-    private var selectionTask: Task<Void, Never>?
-    private var readingSelection = false
     private let detector = SpanishDetector()
     private let dutchDetector = DutchDetector()
-    private let selectedText = SelectedTextReader()
     private let card = TranslationPanel()
     private lazy var dutchShortcut = GlobalProofreadingShortcut { [weak self] in
-        self?.processSelectedText()
+        self?.processClipboardText()
     }
     private var statusText = "Setup needed"
     private lazy var clipboard = ClipboardMonitor(pasteboard: .general) { [weak self] text in
@@ -78,7 +74,6 @@ import Translation
 
     func applicationDidBecomeActive(_ notification: Notification) {
         refreshLoginItemStatus()
-        selectionAccessAllowed = selectedText.hasPermission
     }
 
     func applicationShouldHandleReopen(_ sender: NSApplication, hasVisibleWindows flag: Bool) -> Bool {
@@ -104,7 +99,7 @@ import Translation
         addItem("Translate Clipboard as Spanish", action: #selector(translateClipboard), to: menu, enabled: enabled && !suspended && !preparing)
         addItem("Test Translation", action: #selector(runDemo), to: menu, enabled: enabled && !suspended && !preparing)
         if dutchEnabled {
-            addItem("Translate or Correct Selection (§)", action: #selector(processSelectedText), to: menu, enabled: enabled && !suspended && !preparing)
+            addItem("Translate or Correct Clipboard (§)", action: #selector(processClipboardText), to: menu, enabled: enabled && !suspended && !preparing)
             addItem("Correct Dutch Clipboard", action: #selector(correctDutchClipboard), to: menu, enabled: enabled && !suspended && !preparing)
             addItem("Test Dutch Correction", action: #selector(runDutchDemo), to: menu, enabled: enabled && !suspended && !preparing)
         }
@@ -126,7 +121,6 @@ import Translation
 
     @objc func openSetup() {
         refreshLoginItemStatus()
-        selectionAccessAllowed = selectedText.hasPermission
         Task { await checkDutchSetup() }
         if setupWindow == nil {
             let window = NSWindow(contentRect: NSRect(x: 0, y: 0, width: 440, height: 450),
@@ -179,10 +173,6 @@ import Translation
 
     func openLoginItemSettings() {
         SMAppService.openSystemSettingsLoginItems()
-    }
-
-    func openSelectionAccessSettings() {
-        selectedText.openPermissionSettings()
     }
 
     func setDutchEnabled(_ value: Bool) {
@@ -381,38 +371,16 @@ import Translation
         requestDutch(clipboard.currentTextForManualAction())
     }
 
-    @objc private func processSelectedText() {
-        guard !readingSelection else { return }
+    @objc private func processClipboardText() {
         guard enabled, !suspended, !preparing, dutchEnabled else { return }
         cancelCurrent()
-        // Consume older clipboard changes without reading or altering their contents.
-        // A pending poll must not immediately dismiss the new selection's card.
-        clipboard.acknowledgeCurrentChange()
-        let requestID = generation
-        readingSelection = true
-        selectionTask = Task { [weak self] in
-            guard let self else { return }
-            defer { readingSelection = false }
-            do {
-                let selected = try await selectedText.readIncludingMessages(clipboard: clipboard)
-                guard !Task.isCancelled, generation == requestID else { return }
-                selectionTask = nil
-                let source = try ShortcutInput.read(selection: { selected }, clipboard: {
-                    clipboard.currentTextForManualAction()
-                })
-                hideSetup()
-                switch ShortcutClassifier().classify(source) {
-                case .spanish(let text): request(text, manual: true)
-                case .dutch(let text): requestDutch(text)
-                case nil:
-                    showShortcutMessage("Select Spanish text to translate, or a Dutch sentence to correct, then press §. Code and unsupported text are skipped. With nothing selected, § uses your clipboard.")
-                }
-            } catch {
-                guard !Task.isCancelled, generation == requestID else { return }
-                selectionTask = nil
-                hideSetup()
-                showShortcutMessage((error as? SelectedTextError)?.errorDescription ?? "Couldn’t read the selected text. Try again.")
-            }
+        let source = clipboard.currentTextForManualAction()
+        hideSetup()
+        switch ShortcutClassifier().classify(source) {
+        case .spanish(let text): request(text, manual: true)
+        case .dutch(let text): requestDutch(text)
+        case nil:
+            showShortcutMessage("Copy a Spanish passage to translate or a Dutch sentence to correct, then press §. Names, code and unsupported text are skipped.")
         }
     }
 
@@ -420,7 +388,7 @@ import Translation
         cancelCurrent()
         guard enabled, !suspended, !preparing, dutchEnabled else { return }
         guard let source = dutchDetector.candidate(text) else {
-            showShortcutMessage("Select a Dutch sentence or email, then press §. Names, code and very short fragments are skipped. With nothing selected, § uses your clipboard.")
+            showShortcutMessage("Copy a Dutch sentence or email, then press §. Names, code and very short fragments are skipped.")
             return
         }
         showCard(source: source, kind: .dutchProofreading)
@@ -467,8 +435,6 @@ import Translation
 
     private func cancelCurrent() {
         generation = UUID()
-        selectionTask?.cancel()
-        selectionTask = nil
         availabilityTask?.cancel()
         availabilityTask = nil
         card.hide()

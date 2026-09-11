@@ -92,7 +92,7 @@ final class ClipboardCoreTests: XCTestCase {
         defer { monitor.stop() }
         board.clearContents()
         board.setString("Ik vindt dit een goed idee.", forType: .string)
-        XCTAssertEqual(monitor.currentTextForManualAction(), "Ik vindt dit een goed idee.")
+        XCTAssertEqual(ShortcutClassifier().classify(monitor.currentTextForManualAction()), .dutch("Ik vindt dit een goed idee."))
         monitor.poll()
         XCTAssertTrue(events.isEmpty)
         XCTAssertEqual(board.string(forType: .string), "Ik vindt dit een goed idee.")
@@ -100,26 +100,13 @@ final class ClipboardCoreTests: XCTestCase {
         board.setString("La reunión es mañana por la tarde.", forType: .string)
         monitor.poll()
         XCTAssertEqual(events.count, 1)
-    }
-
-    @MainActor func testSelectionActionAcknowledgesPendingCopyWithoutChangingClipboard() {
-        let board = NSPasteboard.withUniqueName()
-        defer { board.releaseGlobally() }
-        var events: [String?] = []
-        let monitor = ClipboardMonitor(pasteboard: board) { events.append($0) }
-        monitor.start()
-        defer { monitor.stop() }
-        board.setString("Earlier clipboard content", forType: .string)
-        let change = board.changeCount
-        monitor.acknowledgeCurrentChange()
-        monitor.poll()
-        XCTAssertTrue(events.isEmpty)
-        XCTAssertEqual(board.changeCount, change)
-        XCTAssertEqual(board.string(forType: .string), "Earlier clipboard content")
+        let spanish = "Hola Álex, si, salimos todos los sábados! Nos vemos entonces x"
         board.clearContents()
-        board.setString("Next copy", forType: .string)
+        board.setString(spanish, forType: .string)
+        XCTAssertEqual(ShortcutClassifier().classify(monitor.currentTextForManualAction()), .spanish(spanish))
         monitor.poll()
         XCTAssertEqual(events.count, 1)
+        XCTAssertEqual(board.string(forType: .string), spanish)
     }
 
     @MainActor func testConfidentialClipboardIsNotExposedEvenForManualTranslation() {

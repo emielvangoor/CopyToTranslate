@@ -3,7 +3,7 @@ import XCTest
 @testable import CopyToTranslate
 
 final class CardModelTests: XCTestCase {
-    @MainActor func testSelectionErrorCardNeverStartsProofreading() async {
+    @MainActor func testInstructionCardNeverStartsProofreading() async {
         let model = CardModel(source: "", kind: .dutchProofreading)
         model.error = "Accessibility access needed"
         await model.proofread { _ in
