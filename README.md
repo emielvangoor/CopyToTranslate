@@ -96,7 +96,7 @@ The five-second reading countdown begins when both results are ready. Hover to p
 | Automatic startup needs approval | Use **Open Login Items Settings** in Setup and allow the app there. |
 | Translation fails | Copy the passage again, or open Setup to recheck language preparation. The original clipboard remains available. |
 | Dutch copying does nothing | Select a full Dutch sentence or email, then press **§**, or use **Correct Dutch Clipboard**. Dutch proofreading is on demand. |
-| Selected text is unavailable | Allow Accessibility access in Setup. Restart after changing permission if needed. Some apps do not expose selections; copy and use the explicit clipboard menu command instead. |
+| Selected text is unavailable | Allow Accessibility access in Setup. Restart after changing permission if needed. If the switch is already on but the app still reports denied access after an update, remove CopyToTranslate from the Accessibility list with **−**, then add the current app with **+** and enable it again. Some apps do not expose selections; use the explicit clipboard menu command instead. |
 | Dutch model is unavailable | Check your internet connection, OpenRouter credit/key limits and provider privacy settings, then choose **Check setup**. |
 | § is unavailable | Free the key in another app, then disable and re-enable the shortcut switch. The menu command also works. |
 
