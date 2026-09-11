@@ -3,6 +3,17 @@ import XCTest
 @testable import CopyToTranslate
 
 final class CardModelTests: XCTestCase {
+    @MainActor func testSelectionErrorCardNeverStartsProofreading() async {
+        let model = CardModel(source: "", kind: .dutchProofreading)
+        model.error = "Accessibility access needed"
+        await model.proofread { _ in
+            XCTFail("An informational card must not send a request")
+            return DutchProofreading(corrected: "Unexpected", improved: "Unexpected")
+        }
+        XCTAssertNil(model.displayedText)
+        XCTAssertEqual(model.error, "Accessibility access needed")
+    }
+
     @MainActor func testCopyFollowsVisibleDutchVersionAndClearsOldConfirmation() {
         let model = CardModel(source: "Ik vindt dit leuk.", kind: .dutchProofreading)
         model.proofreading = .init(corrected: "Ik vind dit leuk.", improved: "Dit vind ik leuk.")

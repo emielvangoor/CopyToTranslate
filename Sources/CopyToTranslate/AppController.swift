@@ -4,20 +4,24 @@ import ServiceManagement
 import SwiftUI
 import Translation
 
-@MainActor final class AppController: NSObject, NSApplicationDelegate, ObservableObject {
+@MainActor final class AppController: NSObject, NSApplicationDelegate, NSWindowDelegate, ObservableObject {
     static let spanish = Locale.Language(identifier: "es")
     static let english = Locale.Language(identifier: "en")
     static let demo = "La reunión se ha cambiado al jueves a las diez. ¿Puedes confirmarme si te viene bien?"
-    static let dutchDemo = "Ik vindt dit een goed idee en ik wordt er blij van. Kun je mij morgen even bellen om het te bespreken?"
+    static let dutchDemo = "did is een  test"
 
     @Published var enabled = UserDefaults.standard.bool(forKey: "enabled")
     @Published var paused = UserDefaults.standard.bool(forKey: "paused")
     @Published var setupMessage = "Download Spanish and English once, then translate entirely on your Mac."
     @Published var preparing = false
     @Published private(set) var dutchEnabled = UserDefaults.standard.bool(forKey: "dutchEnabled")
-    @Published private(set) var dutchSetupMessage = "Uses a local Dutch model through Ollama."
+    @Published private(set) var dutchSetupMessage = "Uses \(DutchProofreader.modelDisplayName) through OpenRouter."
     @Published private(set) var checkingDutch = false
+    @Published private(set) var hasOpenRouterKey = false
+    @Published private(set) var keyEditorRevision = UUID()
+    private var keyRevision = UUID()
     @Published private(set) var dutchShortcutError: String?
+    @Published private(set) var selectionAccessAllowed = SelectedTextReader().hasPermission
     private var spanishReady = false
     @Published private(set) var loginItemStatus = SMAppService.mainApp.status
     @Published private(set) var loginItemError: String?
@@ -31,9 +35,10 @@ import Translation
     private var availabilityTask: Task<Void, Never>?
     private let detector = SpanishDetector()
     private let dutchDetector = DutchDetector()
+    private let selectedText = SelectedTextReader()
     private let card = TranslationPanel()
     private lazy var dutchShortcut = GlobalProofreadingShortcut { [weak self] in
-        self?.correctDutchClipboard()
+        self?.processSelectedText()
     }
     private var statusText = "Setup needed"
     private lazy var clipboard = ClipboardMonitor(pasteboard: .general) { [weak self] text in
@@ -71,6 +76,7 @@ import Translation
 
     func applicationDidBecomeActive(_ notification: Notification) {
         refreshLoginItemStatus()
+        selectionAccessAllowed = selectedText.hasPermission
     }
 
     func applicationShouldHandleReopen(_ sender: NSApplication, hasVisibleWindows flag: Bool) -> Bool {
@@ -96,7 +102,8 @@ import Translation
         addItem("Translate Clipboard as Spanish", action: #selector(translateClipboard), to: menu, enabled: enabled && !suspended && !preparing)
         addItem("Test Translation", action: #selector(runDemo), to: menu, enabled: enabled && !suspended && !preparing)
         if dutchEnabled {
-            addItem("Correct Dutch Clipboard (§)", action: #selector(correctDutchClipboard), to: menu, enabled: enabled && !suspended && !preparing)
+            addItem("Translate or Correct Selection (§)", action: #selector(processSelectedText), to: menu, enabled: enabled && !suspended && !preparing)
+            addItem("Correct Dutch Clipboard", action: #selector(correctDutchClipboard), to: menu, enabled: enabled && !suspended && !preparing)
             addItem("Test Dutch Correction", action: #selector(runDutchDemo), to: menu, enabled: enabled && !suspended && !preparing)
         }
         menu.addItem(.separator())
@@ -117,11 +124,13 @@ import Translation
 
     @objc func openSetup() {
         refreshLoginItemStatus()
+        selectionAccessAllowed = selectedText.hasPermission
         Task { await checkDutchSetup() }
         if setupWindow == nil {
             let window = NSWindow(contentRect: NSRect(x: 0, y: 0, width: 440, height: 450),
                                   styleMask: [.titled, .closable], backing: .buffered, defer: false)
             window.title = "CopyToTranslate"
+            window.delegate = self
             window.isReleasedWhenClosed = false
             window.contentView = NSHostingView(rootView: SetupView(controller: self))
             window.center()
@@ -129,6 +138,17 @@ import Translation
         }
         NSApp.activate(ignoringOtherApps: true)
         setupWindow?.makeKeyAndOrderFront(nil)
+    }
+
+    func windowWillClose(_ notification: Notification) {
+        if let window = notification.object as? NSWindow, window === setupWindow {
+            keyEditorRevision = UUID()
+        }
+    }
+
+    private func hideSetup() {
+        keyEditorRevision = UUID()
+        setupWindow?.orderOut(nil)
     }
 
     private func refreshLoginItemStatus() {
@@ -157,6 +177,10 @@ import Translation
 
     func openLoginItemSettings() {
         SMAppService.openSystemSettingsLoginItems()
+    }
+
+    func openSelectionAccessSettings() {
+        selectedText.openPermissionSettings()
     }
 
     func setDutchEnabled(_ value: Bool) {
@@ -190,12 +214,47 @@ import Translation
     func checkDutchSetup() async {
         guard !checkingDutch else { return }
         checkingDutch = true
-        defer { checkingDutch = false }
+        let revision = keyRevision
+        defer { if revision == keyRevision { checkingDutch = false } }
         do {
-            try await DutchProofreader().checkAvailability()
-            dutchSetupMessage = "Ready. Dutch corrections and improved phrasing stay on your Mac."
+            let key = try OpenRouterKeychain().load()
+            hasOpenRouterKey = true
+            try await DutchProofreader(apiKey: key).checkAvailability()
+            guard revision == keyRevision else { return }
+            dutchSetupMessage = "Key checked. Dutch proofreading uses \(DutchProofreader.modelDisplayName)."
         } catch {
-            dutchSetupMessage = (error as? DutchProofreadingError)?.errorDescription ?? "Check that Ollama is running on your Mac."
+            guard revision == keyRevision else { return }
+            if case DutchProofreadingError.missingKey = error { hasOpenRouterKey = false }
+            dutchSetupMessage = (error as? DutchProofreadingError)?.errorDescription ?? "Couldn’t check OpenRouter. Try again."
+        }
+    }
+
+    func saveOpenRouterKey(_ key: String) -> Bool {
+        cancelCurrent()
+        do {
+            try OpenRouterKeychain().save(key)
+            keyRevision = UUID()
+            checkingDutch = false
+            hasOpenRouterKey = true
+            dutchSetupMessage = "Key saved in macOS Keychain."
+            Task { await checkDutchSetup() }
+            return true
+        } catch {
+            dutchSetupMessage = (error as? DutchProofreadingError)?.errorDescription ?? "Couldn’t save the API key."
+            return false
+        }
+    }
+
+    func removeOpenRouterKey() {
+        cancelCurrent()
+        do {
+            try OpenRouterKeychain().remove()
+            keyRevision = UUID()
+            checkingDutch = false
+            hasOpenRouterKey = false
+            dutchSetupMessage = "API key removed. Add a key to use Dutch proofreading."
+        } catch {
+            dutchSetupMessage = DutchProofreadingError.keychainUnavailable.errorDescription ?? "Couldn’t remove the API key."
         }
     }
 
@@ -289,7 +348,7 @@ import Translation
         } else {
             clipboard.start()
             statusText = dutchEnabled
-                ? (spanishReady ? "Spanish → English · § Dutch" : "§ Dutch · On-device")
+                ? (spanishReady ? "Spanish → English · § Translate or correct" : "§ Translate or correct")
                 : "Spanish → English · On-device"
         }
         refreshMenu()
@@ -305,30 +364,57 @@ import Translation
     @objc private func translateClipboard() { request(clipboard.currentTextForManualAction(), manual: true) }
 
     @objc func runDemo() {
-        setupWindow?.orderOut(nil)
+        hideSetup()
         request(Self.demo, manual: true)
     }
 
     @objc func runDutchDemo() {
-        setupWindow?.orderOut(nil)
+        hideSetup()
         requestDutch(Self.dutchDemo)
     }
 
     @objc private func correctDutchClipboard() {
         guard enabled, !suspended, !preparing, dutchEnabled else { return }
-        setupWindow?.orderOut(nil)
+        hideSetup()
         requestDutch(clipboard.currentTextForManualAction())
+    }
+
+    @objc private func processSelectedText() {
+        guard enabled, !suspended, !preparing, dutchEnabled else { return }
+        cancelCurrent()
+        // Consume older clipboard changes without reading or altering their contents.
+        // A pending poll must not immediately dismiss the new selection's card.
+        clipboard.acknowledgeCurrentChange()
+        do {
+            let source = try ShortcutInput.read(selection: { try selectedText.read() }, clipboard: {
+                clipboard.currentTextForManualAction()
+            })
+            hideSetup()
+            switch ShortcutClassifier().classify(source) {
+            case .spanish(let text): request(text, manual: true)
+            case .dutch(let text): requestDutch(text)
+            case nil:
+                showShortcutMessage("Select Spanish text to translate, or a Dutch sentence to correct, then press §. Code and unsupported text are skipped. With nothing selected, § uses your clipboard.")
+            }
+        } catch {
+            hideSetup()
+            showShortcutMessage((error as? SelectedTextError)?.errorDescription ?? "Couldn’t read the selected text. Try again.")
+        }
     }
 
     private func requestDutch(_ text: String?) {
         cancelCurrent()
         guard enabled, !suspended, !preparing, dutchEnabled else { return }
         guard let source = dutchDetector.candidate(text) else {
-            statusText = "Copy a Dutch sentence or email"
-            refreshMenu()
+            showShortcutMessage("Select a Dutch sentence or email, then press §. Names, code and very short fragments are skipped. With nothing selected, § uses your clipboard.")
             return
         }
         showCard(source: source, kind: .dutchProofreading)
+    }
+
+    private func showShortcutMessage(_ message: String) {
+        card.show(source: "", kind: .dutchProofreading, error: message,
+                  copy: { _ in false }, setup: { [weak self] in self?.openSetup() })
     }
 
     private func showCard(source: String, kind: CardKind) {
@@ -356,6 +442,7 @@ import Translation
                 if !dutchEnabled { clipboard.stop() }
                 statusText = "Language downloads needed — open Setup"
                 setupMessage = "Prepare Spanish and English to resume on-device translation."
+                if manual { showShortcutMessage("Spanish and English language downloads are needed. Open Setup and choose Prepare Languages, then try again.") }
                 refreshMenu()
                 return
             }
@@ -379,7 +466,7 @@ import Translation
         }
         clipboard.stop()
         cancelCurrent()
-        setupWindow?.orderOut(nil)
+        hideSetup()
         statusText = "Suspended"
         refreshMenu()
     }

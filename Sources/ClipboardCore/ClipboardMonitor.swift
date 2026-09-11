@@ -81,4 +81,8 @@ import AppKit
         lastChange = change
         return text
     }
+
+    public func acknowledgeCurrentChange() {
+        lastChange = pasteboard.changeCount
+    }
 }

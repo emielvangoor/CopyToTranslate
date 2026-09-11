@@ -48,7 +48,7 @@ public struct DutchDetector {
         return value
     }
 
-    private func looksLikeCode(_ text: String) -> Bool {
+    func looksLikeCode(_ text: String) -> Bool {
         if text.contains("```") || text.contains("<?") || text.contains("=>") || text.contains("==") { return true }
         let patterns = [
             #"(?m)^\s*(?://|/\*|\*/|# |-- )"#,

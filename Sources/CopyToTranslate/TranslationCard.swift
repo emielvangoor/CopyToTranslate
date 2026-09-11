@@ -110,14 +110,15 @@ private final class CornerPanel: NSPanel {
     private var dismissal: Task<Void, Never>?
     private var hovered = false
 
-    func show(source: String, kind: CardKind = .spanishTranslation, copy: @escaping (String) -> Bool, setup: @escaping () -> Void) {
+    func show(source: String, kind: CardKind = .spanishTranslation, error: String? = nil, copy: @escaping (String) -> Bool, setup: @escaping () -> Void) {
         hide()
         let model = CardModel(source: source, kind: kind)
+        model.error = error
         self.model = model
         model.onFinished = { [weak self] in self?.beginCountdown() }
         let panel = CornerPanel(contentRect: NSRect(x: 0, y: 0, width: 370, height: kind == .dutchProofreading ? 280 : 240),
                                 styleMask: [.borderless, .nonactivatingPanel], backing: .buffered, defer: false)
-        panel.title = kind == .dutchProofreading ? "Dutch proofreading" : "Spanish to English"
+        panel.title = error != nil ? "Text shortcut" : (kind == .dutchProofreading ? "Dutch proofreading" : "Spanish to English")
         panel.level = .floating
         panel.isFloatingPanel = true
         panel.hidesOnDeactivate = false
@@ -193,7 +194,9 @@ private struct TranslationCard: View {
                 }
             } else {
                 content.task {
-                    await model.proofread { try await DutchProofreader().proofread($0) }
+                    await model.proofread {
+                        try await DutchProofreader(apiKey: OpenRouterKeychain().load()).proofread($0)
+                    }
                 }
             }
         }
@@ -202,7 +205,7 @@ private struct TranslationCard: View {
     private var content: some View {
         VStack(alignment: .leading, spacing: 14) {
             HStack {
-                Label(model.kind == .dutchProofreading ? "Dutch proofreading" : "Spanish → English",
+                Label(model.source.isEmpty ? "Text shortcut" : (model.kind == .dutchProofreading ? "Dutch proofreading" : "Spanish → English"),
                       systemImage: model.kind == .dutchProofreading ? "text.badge.checkmark" : "character.bubble")
                     .font(.system(size: 12, weight: .medium)).foregroundStyle(.secondary)
                 Spacer()
@@ -211,7 +214,7 @@ private struct TranslationCard: View {
                     .accessibilityLabel("Close card")
                     .help("Close card")
             }
-            if model.kind == .dutchProofreading {
+            if model.kind == .dutchProofreading && model.error == nil {
                 Picker("Dutch version", selection: Binding(get: { model.selectedVariant }, set: { model.selectVariant($0) })) {
                     Text("Corrected").tag(DutchVariant.corrected)
                     Text("Improved phrasing").tag(DutchVariant.improved)
@@ -253,7 +256,7 @@ private struct TranslationCard: View {
             } else {
                 HStack(spacing: 10) {
                     ProgressView().controlSize(.small)
-                    Text(model.kind == .dutchProofreading ? "Correcting Dutch on your Mac…" : "Translating on your Mac…")
+                    Text(model.kind == .dutchProofreading ? "Proofreading with OpenRouter…" : "Translating on your Mac…")
                         .font(.callout).foregroundStyle(.secondary)
                 }
                 .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .leading)

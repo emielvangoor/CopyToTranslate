@@ -5,6 +5,7 @@ import Translation
 struct SetupView: View {
     @ObservedObject var controller: AppController
     @State private var configuration: TranslationSession.Configuration?
+    @State private var apiKey = ""
 
     var body: some View {
         VStack(alignment: .leading, spacing: 18) {
@@ -16,11 +17,11 @@ struct SetupView: View {
                     .accessibilityHidden(true)
                 VStack(alignment: .leading, spacing: 3) {
                     Text("Copy. Translate. Refine.").font(.title2.weight(.semibold))
-                    Text("Spanish translations and better Dutch, on your Mac.")
+                    Text("Spanish translations and Dutch proofreading.")
                         .font(.subheadline).foregroundStyle(.secondary)
                 }
             }
-            Text("Copy Spanish for an English translation. For Dutch, copy your text and press §. Your clipboard stays unchanged until you click a copy button.")
+            Text("Copy Spanish for an English translation. Select Spanish or Dutch text and press § to translate or correct it. Your clipboard stays unchanged until you click a copy button.")
                 .fixedSize(horizontal: false, vertical: true)
             Text(controller.setupMessage)
                 .font(.callout).foregroundStyle(.secondary)
@@ -43,17 +44,27 @@ struct SetupView: View {
             }
             GroupBox {
                 VStack(alignment: .leading, spacing: 10) {
-                    Toggle("Enable Dutch proofreading · §", isOn: Binding(
+                    Toggle("Translate or correct selected text · §", isOn: Binding(
                         get: { controller.dutchEnabled },
                         set: { controller.setDutchEnabled($0) }
                     ))
                     .toggleStyle(.checkbox)
-                    Text("Copy a Dutch sentence or email, then press §. Switch between Corrected and Improved phrasing, and copy either version.")
+                    Text("Press § to translate Spanish on your Mac or correct Dutch through OpenRouter and OpenAI. Detection stays on your Mac. With nothing selected, § uses your clipboard.")
                         .font(.caption).foregroundStyle(.secondary)
                         .fixedSize(horizontal: false, vertical: true)
                     if let error = controller.dutchShortcutError {
                         Text(error).font(.caption).foregroundStyle(.red)
                             .fixedSize(horizontal: false, vertical: true)
+                    }
+                    HStack {
+                        Label(controller.selectionAccessAllowed ? "Selected text access allowed" : "Selected text needs Accessibility access",
+                              systemImage: controller.selectionAccessAllowed ? "checkmark.circle" : "hand.raised")
+                            .font(.caption).foregroundStyle(.secondary)
+                        Spacer()
+                        Button(controller.selectionAccessAllowed ? "Settings…" : "Allow…") {
+                            controller.openSelectionAccessSettings()
+                        }
+                        .controlSize(.small)
                     }
                     Text(controller.dutchSetupMessage)
                         .font(.caption).foregroundStyle(.secondary)
@@ -67,17 +78,26 @@ struct SetupView: View {
                             .disabled(!controller.enabled || !controller.dutchEnabled || controller.preparing)
                     }
                     .controlSize(.small)
-                    DisclosureGroup("First-time Dutch setup") {
+                    DisclosureGroup(controller.hasOpenRouterKey ? "API key stored in Keychain" : "Add OpenRouter API key") {
                         VStack(alignment: .leading, spacing: 7) {
-                            Text("Install and open Ollama, then run this once in Terminal to download the 6.6 GB Dutch model. Keep Ollama running for Dutch proofreading.")
-                                .font(.caption)
-                                .fixedSize(horizontal: false, vertical: true)
-                            Link("Download Ollama", destination: URL(string: "https://ollama.com/download/mac")!)
-                            Text("ollama pull qwen3.5:9b")
-                                .font(.system(.caption, design: .monospaced))
-                                .textSelection(.enabled)
-                            Text("Ollama’s login setting can keep it available after restarting your Mac.")
+                            SecureField(controller.hasOpenRouterKey ? "Replace API key" : "OpenRouter API key", text: $apiKey)
+                                .textFieldStyle(.roundedBorder)
+                                .accessibilityIdentifier("openRouterAPIKey")
+                            HStack {
+                                Button("Save key") {
+                                    if controller.saveOpenRouterKey(apiKey) { apiKey = "" }
+                                }
+                                .disabled(apiKey.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty)
+                                if controller.hasOpenRouterKey {
+                                    Button("Remove key") { apiKey = ""; controller.removeOpenRouterKey() }
+                                }
+                                Spacer()
+                                Link("Get an API key", destination: URL(string: "https://openrouter.ai/settings/keys")!)
+                            }
+                            .controlSize(.small)
+                            Text("Your key is saved only in this Mac’s Keychain. Dutch proofreading requires an internet connection and OpenRouter credit.")
                                 .font(.caption).foregroundStyle(.secondary)
+                                .fixedSize(horizontal: false, vertical: true)
                         }
                         .padding(.top, 6)
                     }
@@ -109,6 +129,8 @@ struct SetupView: View {
         }
         .padding(26)
         .frame(width: 440)
+        .onDisappear { apiKey = "" }
+        .onChange(of: controller.keyEditorRevision) { apiKey = "" }
         .translationTask(configuration) { session in
             await controller.prepare(using: session)
         }

@@ -13,5 +13,11 @@ cp .build/release/CopyToTranslate "$app_bundle/Contents/MacOS/CopyToTranslate"
 cp Resources/Info.plist "$app_bundle/Contents/Info.plist"
 cp build/AppIcon.icns "$app_bundle/Contents/Resources/AppIcon.icns"
 cp LICENSE "$app_bundle/Contents/Resources/LICENSE"
-codesign --force --sign - "$app_bundle"
+# Keep the same trusted identity across local updates so macOS can retain
+# Accessibility permission. CI/source builds still default to ad-hoc signing.
+signing_identity="${CODE_SIGN_IDENTITY:-}"
+if [[ -z "$signing_identity" && -f .signing-identity ]]; then
+    signing_identity="$(cat .signing-identity)"
+fi
+codesign --force --sign "${signing_identity:--}" "$app_bundle"
 printf '\nBuilt %s\n' "$app_bundle"

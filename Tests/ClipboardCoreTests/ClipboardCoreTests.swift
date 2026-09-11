@@ -102,6 +102,26 @@ final class ClipboardCoreTests: XCTestCase {
         XCTAssertEqual(events.count, 1)
     }
 
+    @MainActor func testSelectionActionAcknowledgesPendingCopyWithoutChangingClipboard() {
+        let board = NSPasteboard.withUniqueName()
+        defer { board.releaseGlobally() }
+        var events: [String?] = []
+        let monitor = ClipboardMonitor(pasteboard: board) { events.append($0) }
+        monitor.start()
+        defer { monitor.stop() }
+        board.setString("Earlier clipboard content", forType: .string)
+        let change = board.changeCount
+        monitor.acknowledgeCurrentChange()
+        monitor.poll()
+        XCTAssertTrue(events.isEmpty)
+        XCTAssertEqual(board.changeCount, change)
+        XCTAssertEqual(board.string(forType: .string), "Earlier clipboard content")
+        board.clearContents()
+        board.setString("Next copy", forType: .string)
+        monitor.poll()
+        XCTAssertEqual(events.count, 1)
+    }
+
     @MainActor func testConfidentialClipboardIsNotExposedEvenForManualTranslation() {
         let board = NSPasteboard.withUniqueName()
         defer { board.releaseGlobally() }
