@@ -3,6 +3,27 @@ import XCTest
 @testable import ClipboardCore
 
 final class DutchProofreaderTests: XCTestCase {
+    func testRewriteIsDecodedAndRequiredBeforeResultsBecomeCopyable() throws {
+        let source = "Ik vindt dit een goed idee."
+        let data = response(corrected: "Ik vind dit een goed idee.", improved: "Dit lijkt me een goed idee.",
+                            rewritten: "Dit idee spreekt me aan.")
+        let result = try DutchProofreader.decodeResponse(data, source: source)
+        let encoded = try JSONSerialization.jsonObject(with: JSONEncoder().encode(result)) as? [String: String]
+        XCTAssertEqual(encoded?["rewritten"], "Dit idee spreekt me aan.")
+        XCTAssertThrowsError(try DutchProofreader.decodeResponse(response(corrected: source, improved: source, rewritten: ""), source: source))
+        let missing = Data(#"{"choices":[{"finish_reason":"stop","message":{"content":"{\"corrected\":\"Goed.\",\"improved\":\"Goed.\"}"}}]}"#.utf8)
+        XCTAssertThrowsError(try DutchProofreader.decodeResponse(missing, source: source))
+    }
+
+    func testRewriteCannotChangeNumbersLinksOrEmailAddresses() {
+        let source = "Stuur de 3 documenten naar jan@voorbeeld.nl via https://voorbeeld.nl/upload."
+        for changed in [source.replacingOccurrences(of: "3", with: "4"),
+                        source.replacingOccurrences(of: "jan@", with: "piet@"),
+                        source.replacingOccurrences(of: "/upload", with: "/download")] {
+            XCTAssertThrowsError(try DutchProofreader.decodeResponse(response(corrected: source, improved: source, rewritten: changed), source: source))
+        }
+    }
+
     func testBothVersionsAreDecodedWithoutLosingParagraphs() throws {
         let source = "Beste Jan,\n\nIk vindt dit een goed idee.\n\nGroeten, Emiel"
         let corrected = "Beste Jan,\n\nIk vind dit een goed idee.\n\nGroeten, Emiel"
@@ -52,6 +73,9 @@ final class DutchProofreaderTests: XCTestCase {
         XCTAssertEqual(provider["require_parameters"] as? Bool, true)
         let format = try XCTUnwrap(body["response_format"] as? [String: Any])
         XCTAssertEqual(format["type"] as? String, "json_schema")
+        let schemaContainer = try XCTUnwrap(format["json_schema"] as? [String: Any])
+        let schema = try XCTUnwrap(schemaContainer["schema"] as? [String: Any])
+        XCTAssertEqual(Set(schema["required"] as? [String] ?? []), Set(["corrected", "improved", "rewritten"]))
         let messages = try XCTUnwrap(body["messages"] as? [[String: String]])
         XCTAssertEqual(messages.map { $0["role"] }, ["system", "user"])
         XCTAssertFalse(try XCTUnwrap(messages.first?["content"]).contains(source))
@@ -68,7 +92,7 @@ final class DutchProofreaderTests: XCTestCase {
     }
 
     func testRefusalsAndMissingCompletionReasonsAreNotCopyable() throws {
-        let content = "{\"corrected\":\"Dit is een test.\",\"improved\":\"Dit is een test.\"}"
+        let content = "{\"corrected\":\"Dit is een test.\",\"improved\":\"Dit is een test.\",\"rewritten\":\"Dit is een test.\"}"
         let refused = try JSONSerialization.data(withJSONObject: ["choices": [[
             "finish_reason": "stop", "message": ["content": content, "refusal": "refused"]
         ]]])
@@ -101,8 +125,8 @@ final class DutchProofreaderTests: XCTestCase {
         } catch { XCTAssertTrue(error is CancellationError) }
     }
 
-    private func response(corrected: String, improved: String, reason: String = "stop") -> Data {
-        let content = try! JSONSerialization.data(withJSONObject: ["corrected": corrected, "improved": improved])
+    private func response(corrected: String, improved: String, rewritten: String? = nil, reason: String = "stop") -> Data {
+        let content = try! JSONSerialization.data(withJSONObject: ["corrected": corrected, "improved": improved, "rewritten": rewritten ?? improved])
         return try! JSONSerialization.data(withJSONObject: [
             "choices": [["finish_reason": reason,
                          "message": ["role": "assistant", "content": String(decoding: content, as: UTF8.self)]]]

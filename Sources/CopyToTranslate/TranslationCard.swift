@@ -4,7 +4,7 @@ import SwiftUI
 import Translation
 
 enum CardKind { case spanishTranslation, dutchProofreading }
-enum DutchVariant: String, CaseIterable { case corrected, improved }
+enum DutchVariant: String, CaseIterable { case corrected, improved, rewritten }
 
 @MainActor final class CardModel: ObservableObject {
     let source: String
@@ -28,13 +28,21 @@ enum DutchVariant: String, CaseIterable { case corrected, improved }
     var displayedText: String? {
         guard !cancelled else { return nil }
         if kind == .spanishTranslation { return translation }
-        return selectedVariant == .corrected ? proofreading?.corrected : proofreading?.improved
+        return switch selectedVariant {
+        case .corrected: proofreading?.corrected
+        case .improved: proofreading?.improved
+        case .rewritten: proofreading?.rewritten
+        }
     }
 
     var copyTitle: String {
         if copied { return "Copied!" }
         if kind == .spanishTranslation { return "Copy English" }
-        return selectedVariant == .corrected ? "Copy corrected" : "Copy improved"
+        return switch selectedVariant {
+        case .corrected: "Copy corrected"
+        case .improved: "Copy improved"
+        case .rewritten: "Copy rewrite"
+        }
     }
 
     func selectVariant(_ variant: DutchVariant) {
@@ -217,7 +225,11 @@ private struct TranslationCard: View {
             if model.kind == .dutchProofreading && model.error == nil {
                 Picker("Dutch version", selection: Binding(get: { model.selectedVariant }, set: { model.selectVariant($0) })) {
                     Text("Corrected").tag(DutchVariant.corrected)
-                    Text("Improved phrasing").tag(DutchVariant.improved)
+                        .help("Fix spelling, grammar and punctuation.")
+                    Text("Improved").tag(DutchVariant.improved)
+                        .help("Smooth the phrasing while staying close to your wording.")
+                    Text("Rewrite").tag(DutchVariant.rewritten)
+                        .help("Fresh wording and sentence structure, preserving meaning and tone.")
                 }
                 .pickerStyle(.segmented)
                 .disabled(model.proofreading == nil)

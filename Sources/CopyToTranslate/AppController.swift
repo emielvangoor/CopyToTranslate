@@ -8,7 +8,14 @@ import Translation
     static let spanish = Locale.Language(identifier: "es")
     static let english = Locale.Language(identifier: "en")
     static let demo = "La reunión se ha cambiado al jueves a las diez. ¿Puedes confirmarme si te viene bien?"
-    static let dutchDemo = "did is een  test"
+    static let dutchDemo = """
+    Hoi Jan,
+
+    ik kan morgen niet bij de afspraak zijn want ik heb dan al een ander afspraak. zou je mij kunnen laten weten of we het misschien naar vrijdag om 14:00 kunnen verplaatsen?
+
+    Groeten,
+    Sam
+    """
 
     @Published var enabled = UserDefaults.standard.bool(forKey: "enabled")
     @Published var paused = UserDefaults.standard.bool(forKey: "paused")

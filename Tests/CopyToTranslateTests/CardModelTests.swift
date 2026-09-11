@@ -5,18 +5,18 @@ import XCTest
 final class CardModelTests: XCTestCase {
     @MainActor func testInstructionCardNeverStartsProofreading() async {
         let model = CardModel(source: "", kind: .dutchProofreading)
-        model.error = "Accessibility access needed"
+        model.error = "Copy text first"
         await model.proofread { _ in
             XCTFail("An informational card must not send a request")
-            return DutchProofreading(corrected: "Unexpected", improved: "Unexpected")
+            return DutchProofreading(corrected: "Unexpected", improved: "Unexpected", rewritten: "Unexpected")
         }
         XCTAssertNil(model.displayedText)
-        XCTAssertEqual(model.error, "Accessibility access needed")
+        XCTAssertEqual(model.error, "Copy text first")
     }
 
     @MainActor func testCopyFollowsVisibleDutchVersionAndClearsOldConfirmation() {
         let model = CardModel(source: "Ik vindt dit leuk.", kind: .dutchProofreading)
-        model.proofreading = .init(corrected: "Ik vind dit leuk.", improved: "Dit vind ik leuk.")
+        model.proofreading = .init(corrected: "Ik vind dit leuk.", improved: "Dit vind ik leuk.", rewritten: "Hier word ik blij van.")
         var clipboard = "Ik vindt dit leuk."
         XCTAssertEqual(model.selectedVariant, .corrected)
         model.copyResult { clipboard = $0; return true }
@@ -29,6 +29,27 @@ final class CardModelTests: XCTestCase {
         model.selectVariant(.corrected)
         XCTAssertEqual(model.displayedText, "Ik vind dit leuk.")
         XCTAssertEqual(model.source, "Ik vindt dit leuk.")
+    }
+
+    @MainActor func testRewriteCopiesTheVisibleVersionAndKeepsOtherChoices() throws {
+        let model = CardModel(source: "Ik vindt dit leuk.", kind: .dutchProofreading)
+        model.proofreading = try JSONDecoder().decode(DutchProofreading.self, from: Data(#"{"corrected":"Ik vind dit leuk.","improved":"Dit vind ik leuk.","rewritten":"Hier word ik blij van."}"#.utf8))
+        model.copyResult { _ in true }
+        let rewrite = try XCTUnwrap(DutchVariant(rawValue: "rewritten"))
+        model.selectVariant(rewrite)
+        XCTAssertFalse(model.copied)
+        XCTAssertEqual(model.displayedText, "Hier word ik blij van.")
+        XCTAssertEqual(model.copyTitle, "Copy rewrite")
+        var copied = ""
+        model.copyResult { copied = $0; return true }
+        XCTAssertEqual(copied, "Hier word ik blij van.")
+        model.selectVariant(.improved)
+        XCTAssertEqual(model.displayedText, "Dit vind ik leuk.")
+        model.selectVariant(.corrected)
+        XCTAssertEqual(model.displayedText, "Ik vind dit leuk.")
+        model.cancel()
+        model.selectVariant(rewrite)
+        XCTAssertNil(model.displayedText)
     }
 
     @MainActor func testFailedCopyCanBeRetriedAndCancelledTextCannotBeCopied() {
@@ -48,7 +69,7 @@ final class CardModelTests: XCTestCase {
     }
 
     @MainActor func testLateDutchResultIsDiscardedAfterCardCancellation() async {
-        let result = DutchProofreading(corrected: "Ik vind dit leuk.", improved: "Dit vind ik leuk.")
+        let result = DutchProofreading(corrected: "Ik vind dit leuk.", improved: "Dit vind ik leuk.", rewritten: "Hier word ik blij van.")
         let gate = ProofreadingGate()
         let model = CardModel(source: "Ik vindt dit leuk.", kind: .dutchProofreading)
         var finished = false

@@ -20,7 +20,7 @@ A small macOS menu bar app that automatically translates copied Spanish text int
 - **Automatic Spanish detection.** Copy a Spanish passage in any app to see its English translation. Emoji are ignored for detection and preserved in the text sent to translation.
 - **A quiet translation card.** Appears at the top right without taking keyboard focus. Longer translations scroll.
 - **Copy English.** Copies the full translation when you click it. Automatic translation leaves your original clipboard unchanged.
-- **Dutch proofreading on demand.** Copy a Dutch sentence or email, then press **§** to proofread with GPT-5.4 nano through OpenRouter. Choose **Corrected** for minimal edits or **Improved phrasing** for a smoother version. Each has its own copy action. Dutch copying alone never runs the model.
+- **Dutch proofreading on demand.** Copy a Dutch sentence or email, then press **§** to proofread with GPT-5.4 nano through OpenRouter. Choose **Corrected** for minimal edits, **Improved** for smoother phrasing, or **Rewrite** for fresh wording and sentence structure that keep the original meaning and tone. Each has its own copy action. Dutch copying alone never runs the model.
 - **Copy, then press §.** The shortcut reads copied text. On-device classification routes Spanish to English translation and Dutch to proofreading. No Accessibility permission is required.
 - **Five-second countdown.** A shrinking ring shows the remaining reading time. Hover to pause; move away to resume. Respects Reduce Motion.
 - **Menu bar controls.** Pause or resume, translate ambiguous text manually, try an example, or open Setup.
@@ -64,7 +64,7 @@ For short or ambiguous phrases, choose **Translate Clipboard as Spanish** from t
 2. In CopyToTranslate Setup, expand **Add OpenRouter API key**, paste the key and click **Save key**. The app stores it in macOS Keychain on this Mac; it never embeds it in the app or repository. The field clears after saving. Use **Remove key** to delete it later.
 3. Turn on **Translate or correct clipboard text · §** and use **Check setup**.
 4. **Copy the text first**, then press the bare **§** key. Spanish is translated to English on-device; Dutch is corrected through OpenRouter. No Command, Option or Control is needed for the shortcut. The menu also offers **Translate or Correct Clipboard (§)** and explicit Spanish/Dutch clipboard commands. Highlighting text alone does not change what § processes.
-5. Switch between **Corrected** and **Improved phrasing**, then click **Copy corrected** or **Copy improved**. Paste the result wherever you were writing.
+5. Switch between **Corrected**, **Improved** and **Rewrite**, then use **Copy corrected**, **Copy improved** or **Copy rewrite**. Paste the result wherever you were writing.
 
 Only an explicit proofreading request sends that passage to OpenRouter and its OpenAI provider. Normal copying and language detection remain local. Internet access is required for Dutch proofreading; there is no automatic cloud fallback for Spanish.
 
@@ -74,7 +74,7 @@ Dutch proofreading is explicit and still works while automatic Spanish translati
 
 **WhatsApp messages:** highlight the passage and use WhatsApp's **Copy** command, then press **§**. If Command-C does not copy a message highlight, right-click the highlight and choose **Copy**. The pointer position does not matter after copying.
 
-The five-second reading countdown begins when both results are ready. Hover to pause it. The nine synthetic evaluation requests took about 1–3 seconds each and cost approximately $0.0014 in total; actual latency and usage cost vary with the text and model behavior. Both versions may be identical when the corrected text already reads naturally. Review suggestions before using them; models can still miss errors or change wording more than intended.
+All three Dutch versions are generated in one request. Switching versions makes no extra request. The five-second reading countdown begins when the results are ready. Hover to pause it. The earlier two-version evaluation used nine synthetic requests, taking about 1–3 seconds each and approximately $0.0014 in total; generating three versions produces more output, and actual latency and usage cost vary with the text and model behavior. Versions may be identical for very short text where another phrasing would sound forced. Review suggestions before using them; models can still miss errors or change wording more than intended.
 
 ## Privacy and limits
 
