@@ -97,7 +97,7 @@ Tests use private pasteboards and leave your clipboard untouched. They cover lan
 Tagged releases include the app ZIP and its SHA-256 checksum. GitHub also provides source archives. To verify a downloaded ZIP, put it and its `.sha256` file in the same folder and run:
 
 ```sh
-shasum -a 256 -c CopyToTranslate-v0.1.0-macos-arm64.zip.sha256
+shasum -a 256 -c CopyToTranslate-v1.0.0-macos-arm64.zip.sha256
 ```
 
 Use the filename for your downloaded version. Maintainers can follow the [release guide](docs/releasing.md) to publish another version. Pull requests and pushes to `main` also run the tests and package verification in GitHub Actions.

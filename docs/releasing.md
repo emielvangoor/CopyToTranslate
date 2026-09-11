@@ -9,8 +9,8 @@ The GitHub Actions workflow tests and packages the arm64 app on `macos-15`. A ve
 5. Tag that commit and push the tag, substituting the actual version:
 
    ```sh
-   git tag -a v0.1.0 -m "Release v0.1.0"
-   git push origin v0.1.0
+   git tag -a v1.0.0 -m "Release v1.0.0"
+   git push origin v1.0.0
    ```
 
 6. Check the tag's workflow run and the resulting [GitHub release](https://github.com/emielvangoor/CopyToTranslate/releases). The tag must match the version in Info.plist and have a release-notes file or the workflow fails before publishing.
